@@ -49,6 +49,7 @@ common common-options
 library
   import:              common-options
   hs-source-dirs:      src
+  build-depends:       text
   exposed-modules:     Bundles
 
 test-suite bundles-test
