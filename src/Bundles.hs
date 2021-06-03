@@ -7,6 +7,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
@@ -45,6 +46,10 @@ data Bundle name owner exports where
     export ->
     Bundle name owner exports ->
     Bundle name owner (exportName ':-> export : exports)
+  Skipping ::
+    forall exportName export name owner exports.
+    Bundle name owner exports ->
+    Bundle name owner (exportName ':-> export : exports)
 
 type GetExport :: Symbol -> Type -> Type -> Constraint
 class GetExport exportName export bundle where
@@ -70,14 +75,23 @@ type family CheckExportType bundleName bundleOwner exportName requiredType actua
           ':$$: 'ShowType actualType
       )
 
+type ExportTypeEq :: Symbol -> Symbol -> Symbol -> Type -> Type -> Constraint
+class
+  (requiredExport ~ actualExport) =>
+  ExportTypeEq name owner exportName requiredExport actualExport
 instance
-  {-# OVERLAPPING #-}
   ( CheckExportType name owner exportName requiredExport actualExport
   , requiredExport ~ actualExport
   ) =>
+  ExportTypeEq name owner exportName requiredExport actualExport
+
+instance
+  {-# OVERLAPPING #-}
+  (ExportTypeEq name owner exportName requiredExport actualExport) =>
   GetExport exportName requiredExport (Bundle name owner (exportName ':-> actualExport ': exs))
   where
   getExport (Exporting export _) = Just export
+  getExport (Skipping _) = Nothing
 
 instance
   {-# OVERLAPPABLE #-}
@@ -85,35 +99,57 @@ instance
   GetExport exportName export (Bundle name owner (exportName' ':-> export' ': exs))
   where
   getExport (Exporting _ bundle) = getExport @exportName @export bundle
+  getExport (Skipping bundle) = getExport @exportName @export bundle
 
-type GetExports :: TypeMap -> [Type -> Constraint]
-type family GetExports exs where
-  GetExports '[] = '[]
-  GetExports (exportName ':-> export : exs) = (GetExport exportName export : GetExports exs)
+type MorphBundle :: TypeMap -> TypeMap -> Constraint
+class MorphBundle fromExports toExports where
+  morphBundle :: Bundle name owner fromExports -> Bundle name owner toExports
 
-type AllF :: [Type -> Constraint] -> Type -> Constraint
-type family AllF cs t where
-  AllF '[] t = ()
-  AllF (c : cs) t = (c t, AllF cs t)
+instance MorphBundle fromExports '[] where
+  morphBundle (_ :: Bundle name owner fromExports) = Bundle @name @owner
 
-type All :: [Type -> Constraint] -> Type -> Constraint
-class (AllF cs t) => All cs t
-instance (AllF cs t) => All cs t
+instance MorphBundle exports exports where
+  morphBundle bundle = bundle
+
+instance
+  ( MorphBundle fromExports toMoreExports
+  , forall name owner. GetExport exportName export (Bundle name owner fromExports)
+  ) =>
+  MorphBundle fromExports (exportName ':-> export ': toMoreExports)
+  where
+  morphBundle bundle =
+    case getExport @exportName bundle of
+      Just export -> base & Exporting @exportName export
+      Nothing -> base & Skipping @exportName
+   where
+    base = morphBundle @fromExports @toMoreExports bundle
+
+morph ::
+  forall toExports fromExports name owner.
+  (MorphBundle fromExports toExports) =>
+  Bundle name owner fromExports ->
+  Bundle name owner toExports
+morph = morphBundle @fromExports @toExports
 
 type SomeBundle :: TypeMap -> Type
 data SomeBundle requiredExports where
   SomeBundle ::
-    forall requiredExports name owner actualExports.
-    ( All (GetExports requiredExports) (Bundle name owner actualExports)
-    , KnownSymbol name
+    forall exports name owner.
+    ( KnownSymbol name
     , KnownSymbol owner
     ) =>
-    Bundle name owner actualExports ->
-    SomeBundle requiredExports
+    Bundle name owner exports ->
+    SomeBundle exports
 
--- TODO implement loosen
-loosenBundle :: SomeBundle exports -> SomeBundle (newExName ':-> newExType ': exports)
-loosenBundle (SomeBundle b) = undefined -- SomeBundle b
+someBundle ::
+  forall exports name owner bundleExports.
+  ( KnownSymbol name
+  , KnownSymbol owner
+  , MorphBundle bundleExports exports
+  ) =>
+  Bundle name owner bundleExports ->
+  SomeBundle exports
+someBundle = SomeBundle . morph
 
 type BundleFactory :: Symbol -> Symbol -> TypeMap -> TypeMap -> Type
 data BundleFactory name owner imports exports where
@@ -141,7 +177,7 @@ factoryFoo ::
 factoryFoo = BundleFactory $ \inputBundles ->
   let total = inputBundles & Maybe.mapMaybe (\(SomeBundle b) -> getExport @"foo/val" @Word b) & sum
       names = inputBundles & Maybe.mapMaybe (\(SomeBundle b) -> getExport @"foo/name" @Text b)
-   in [ SomeBundle $
+   in [ someBundle $
           Bundle @"factoryFoo.bundle" @"blue"
             & Exporting @"bar/total" total
             & Exporting @"bar/names" names
