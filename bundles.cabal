@@ -50,7 +50,12 @@ library
   import:              common-options
   hs-source-dirs:      src
   build-depends:       text
-  exposed-modules:     Bundles
+  exposed-modules:     Bundling
+                       Bundling.Bundle
+                       Bundling.Factory
+                       Bundling.BundlingSetup
+                       HList
+                       Scratch
 
 test-suite bundles-test
   import:              common-options

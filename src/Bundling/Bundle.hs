@@ -1,13 +1,9 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PartialTypeSignatures #-}
-{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -16,26 +12,24 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE UndecidableSuperClasses #-}
-{-# OPTIONS_GHC -Wno-missing-export-lists #-}
-{-# OPTIONS_GHC -Wno-partial-type-signatures #-}
 
-{- |
-Copyright: (c) 2021 Gustavo Bicalho
-SPDX-License-Identifier: MIT
-Maintainer: Gustavo Bicalho <gusbicalho@gmail.com>
-
-See README for more info
--}
-module Bundles where
+module Bundling.Bundle (
+  Bundle (..),
+  BundleSig (..),
+  SomeBundle (..),
+  someBundle,
+  TypeMap,
+  TypeMapEntry (..),
+  GetExport,
+  getExport,
+  MorphBundle,
+  morph,
+) where
 
 import Data.Function ((&))
 import Data.Kind (Constraint, Type)
-import qualified Data.Maybe as Maybe
-import Data.Text (Text)
 import GHC.TypeLits (ErrorMessage (..), KnownSymbol, Symbol, TypeError)
 
--- type (:->) :: Type -> Type -> (Type, Type)
 data TypeMapEntry = Symbol :-> Type
 
 type TypeMap = [TypeMapEntry]
@@ -52,6 +46,9 @@ data Bundle name owner exports where
     forall exportName export name owner exports.
     Bundle name owner exports ->
     Bundle name owner (exportName ':-> export : exports)
+
+data BundleSig where
+  BundleSig :: Symbol -> Symbol -> TypeMap -> BundleSig
 
 type GetExport :: Symbol -> Type -> Type -> Constraint
 class GetExport exportName export bundle where
@@ -113,6 +110,12 @@ data SomeBundle requiredExports where
     Bundle name owner exports ->
     SomeBundle exports
 
+instance
+  (forall name owner. GetExport exportName export (Bundle name owner exports)) =>
+  GetExport exportName export (SomeBundle exports)
+  where
+  getExport (SomeBundle bundle) = getExport @exportName @export bundle
+
 type MorphBundle :: (TypeMap -> Type) -> TypeMap -> TypeMap -> Constraint
 class MorphBundle bundleC fromExports toExports where
   morphBundle :: bundleC fromExports -> bundleC toExports
@@ -170,87 +173,3 @@ someBundle ::
   Bundle name owner bundleExports ->
   SomeBundle exports
 someBundle = SomeBundle . morph
-
-type BundleFactory :: Symbol -> Symbol -> TypeMap -> TypeMap -> Type
-data BundleFactory name owner imports exports where
-  BundleFactory ::
-    forall name owner imports exports.
-    ([SomeBundle imports] -> [SomeBundle exports]) ->
-    BundleFactory name owner imports exports
-
-data BundleFactorySig where
-  BundleFactorySig :: Symbol -> Symbol -> TypeMap -> TypeMap -> BundleFactorySig
-
-data BundleSig where
-  BundleSig :: Symbol -> Symbol -> TypeMap -> BundleSig
-
-type Bundles :: [BundleSig] -> Type
-data Bundles signatures where
-  NoBundles :: Bundles '[]
-  AddBundle ::
-    Bundle name owner exports ->
-    Bundles sigs ->
-    Bundles ( 'BundleSig name owner exports : sigs)
-
-type Factories :: [BundleFactorySig] -> Type
-data Factories signatures where
-  NoFactories :: Factories '[]
-  AddFactory ::
-    BundleFactory name owner imports exports ->
-    Factories sigs ->
-    Factories ( 'BundleFactorySig name owner imports exports : sigs)
-
-type BundlingSetup :: [BundleSig] -> [BundleFactorySig] -> Type
-data BundlingSetup bundles factories where
-  BundlingSetup :: Bundles bundles -> Factories factories -> BundlingSetup bundles factories
-
-emptySetup :: BundlingSetup '[] '[]
-emptySetup = BundlingSetup NoBundles NoFactories
-
-addBundle ::
-  Bundle name owner exports ->
-  BundlingSetup bundles factories ->
-  BundlingSetup ( 'BundleSig name owner exports : bundles) factories
-addBundle bundle (BundlingSetup bundles factories) =
-  BundlingSetup (bundles & AddBundle bundle) factories
-
-addFactory ::
-  BundleFactory name owner imports exports ->
-  BundlingSetup bundles factories ->
-  BundlingSetup bundles ( 'BundleFactorySig name owner imports exports : factories)
-addFactory factory (BundlingSetup bundles factories) =
-  BundlingSetup bundles (factories & AddFactory factory)
-
-bundleA ::
-  Bundle
-    "bundleA"
-    "red"
-    '["bar/name" ':-> Text, "foo/val" ':-> Word]
-bundleA =
-  Bundle @"bundleA" @"red"
-    & Exporting @"foo/val" @Word 42
-    & Exporting @"bar/name" @Text "Pretty foolish"
-
-factoryFoo ::
-  BundleFactory
-    "factoryFoo"
-    "blue"
-    '["foo/val" ':-> Word, "foo/name" ':-> Text]
-    '["bar/total" ':-> Word, "bar/names" ':-> [Text]]
-factoryFoo = BundleFactory $ \inputBundles ->
-  let total = inputBundles & Maybe.mapMaybe (\(SomeBundle b) -> getExport @"foo/val" @Word b) & sum
-      names = inputBundles & Maybe.mapMaybe (\(SomeBundle b) -> getExport @"foo/name" @Text b)
-   in [ someBundle $
-          Bundle @"factoryFoo.bundle" @"blue"
-            & Exporting @"bar/total" total
-            & Exporting @"bar/names" names
-      ]
-
-runFactory :: BundleFactory name owner imports exports -> [SomeBundle imports] -> [SomeBundle exports]
-runFactory (BundleFactory runF) = runF
-
-assembled :: BundlingSetup _ _
-assembled =
-  emptySetup
-    & addBundle bundleA
-      . addFactory factoryFoo
