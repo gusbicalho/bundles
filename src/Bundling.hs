@@ -33,7 +33,6 @@ import Bundling.Bundle (
   Bundle (Bundle, Exporting),
   GetExport (getExport),
   SomeBundle (..),
-  TypeMapEntry ((:->)),
   someBundle,
  )
 import Bundling.BundlingSetup (
@@ -43,6 +42,7 @@ import Bundling.BundlingSetup (
   emptySetup,
  )
 import Bundling.Factory (BundleFactory (..))
+import Bundling.TypeMap (TypeMapEntry ((:->)))
 import Data.Function ((&))
 import qualified Data.Maybe as Maybe
 import Data.Text (Text)

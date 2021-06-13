@@ -18,21 +18,17 @@ module Bundling.Bundle (
   BundleSig (..),
   SomeBundle (..),
   someBundle,
-  TypeMap,
-  TypeMapEntry (..),
   GetExport,
   getExport,
   MorphBundle,
   morph,
 ) where
 
+import Bundling.TypeMap (TypeMap, TypeMapEntry (..), Merge)
 import Data.Function ((&))
 import Data.Kind (Constraint, Type)
 import GHC.TypeLits (ErrorMessage (..), KnownSymbol, Symbol, TypeError)
-
-data TypeMapEntry = Symbol :-> Type
-
-type TypeMap = [TypeMapEntry]
+import Data.Proxy (Proxy(Proxy))
 
 type Bundle :: Symbol -> Symbol -> TypeMap -> Type
 data Bundle name owner exports where
@@ -103,18 +99,19 @@ instance
 type SomeBundle :: TypeMap -> Type
 data SomeBundle requiredExports where
   SomeBundle ::
-    forall exports name owner.
+    forall exports (skips :: TypeMap) name owner.
     ( KnownSymbol name
     , KnownSymbol owner
     ) =>
     Bundle name owner exports ->
-    SomeBundle exports
+    Proxy skips ->
+    SomeBundle (Merge exports skips)
 
 instance
   (forall name owner. GetExport exportName export (Bundle name owner exports)) =>
   GetExport exportName export (SomeBundle exports)
   where
-  getExport (SomeBundle bundle) = getExport @exportName @export bundle
+  getExport (SomeBundle bundle (_ :: p skips)) = getExport @exportName @export bundle
 
 type MorphBundle :: (TypeMap -> Type) -> TypeMap -> TypeMap -> Constraint
 class MorphBundle bundleC fromExports toExports where
@@ -140,21 +137,22 @@ instance
 
 instance MorphBundle SomeBundle fromExports '[] where
   {-# INLINE morphBundle #-}
-  morphBundle (SomeBundle (_ :: Bundle name owner exports)) = SomeBundle $ Bundle @name @owner
+  morphBundle (SomeBundle (_ :: Bundle name owner exports) (_ :: p skips)) =
+    SomeBundle (Bundle @name @owner) (Proxy @'[])
 
-instance
-  ( forall name owner. MorphBundle (Bundle name owner) fromExports toMoreExports
-  , forall name owner. GetExport exportName export (Bundle name owner fromExports)
-  ) =>
-  MorphBundle SomeBundle fromExports (exportName ':-> export ': toMoreExports)
-  where
-  {-# INLINE morphBundle #-}
-  morphBundle (SomeBundle bundle) =
-    case morphBundle @_ @fromExports @toMoreExports bundle of
-      base ->
-        case getExport @exportName @export bundle of
-          Just export -> SomeBundle $ base & Exporting @exportName export
-          Nothing -> SomeBundle $ base & Skipping @exportName
+-- instance
+--   ( forall name owner. MorphBundle (Bundle name owner) fromExports toMoreExports
+--   , forall name owner. GetExport exportName export (Bundle name owner fromExports)
+--   ) =>
+--   MorphBundle SomeBundle fromExports (exportName ':-> export ': toMoreExports)
+--   where
+--   {-# INLINE morphBundle #-}
+--   morphBundle (SomeBundle bundle (__ :: p skips)) =
+--     case morphBundle @_ @fromExports @toMoreExports bundle of
+--       base ->
+--         case getExport @exportName @export bundle of
+--           Just export -> SomeBundle $ base & Exporting @exportName export
+--           Nothing -> SomeBundle $ base & Skipping @exportName
 
 {-# INLINE morph #-}
 morph ::
@@ -168,8 +166,8 @@ someBundle ::
   forall exports name owner bundleExports.
   ( KnownSymbol name
   , KnownSymbol owner
-  , MorphBundle (Bundle name owner) bundleExports exports
+  , MorphBundle SomeBundle bundleExports exports
   ) =>
   Bundle name owner bundleExports ->
   SomeBundle exports
-someBundle = SomeBundle . morph
+someBundle bundle = morph @exports $ SomeBundle bundle (Proxy @'[])

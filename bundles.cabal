@@ -54,6 +54,7 @@ library
                        Bundling.Bundle
                        Bundling.Factory
                        Bundling.BundlingSetup
+                       Bundling.TypeMap
                        HList
                        Scratch
 
