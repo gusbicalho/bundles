@@ -31,9 +31,9 @@ module Bundling where
 
 import Bundling.Bundle (
   Bundle (Bundle, Exporting),
-  GetExport (getExport),
+  getExport,
   SomeBundle (..),
-  someBundle,
+  someBundle, getExportMaybe
  )
 import Bundling.BundlingSetup (
   BundlingSetup,
@@ -42,7 +42,7 @@ import Bundling.BundlingSetup (
   emptySetup,
  )
 import Bundling.Factory (BundleFactory (..))
-import Bundling.TypeMap (TypeMapEntry ((:->)))
+import Bundling.TypeMap (KMapEntry ((:->)))
 import Data.Function ((&))
 import qualified Data.Maybe as Maybe
 import Data.Text (Text)
@@ -64,15 +64,15 @@ factoryFoo ::
     '["foo/val" ':-> Word, "foo/name" ':-> Text]
     '["bar/total" ':-> Word, "bar/names" ':-> [Text]]
 factoryFoo = BundleFactory $ \inputBundles ->
-  let total = inputBundles & Maybe.mapMaybe (\(SomeBundle b) -> getExport @"foo/val" @Word b) & sum
-      names = inputBundles & Maybe.mapMaybe (\(SomeBundle b) -> getExport @"foo/name" @Text b)
+  let total = inputBundles & Maybe.mapMaybe (getExportMaybe @"foo/val" @Word) & sum
+      names = inputBundles & Maybe.mapMaybe (getExportMaybe @"foo/name" @Text)
    in [ someBundle $
           Bundle @"factoryFoo.bundle" @"blue"
             & Exporting @"bar/total" total
             & Exporting @"bar/names" names
       ]
 
-runFactory :: BundleFactory name owner imports exports -> [SomeBundle imports] -> [SomeBundle exports]
+runFactory :: BundleFactory name owner imports exports -> [SomeBundle] -> [SomeBundle]
 runFactory (BundleFactory runF) = runF
 
 assembled :: BundlingSetup _ _

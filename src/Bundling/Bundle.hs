@@ -19,16 +19,14 @@ module Bundling.Bundle (
   SomeBundle (..),
   someBundle,
   GetExport,
+  getExportValue,
   getExport,
-  MorphBundle,
-  morph,
+  getExportMaybe,
 ) where
 
-import Bundling.TypeMap (TypeMap, TypeMapEntry (..), Merge)
-import Data.Function ((&))
+import Bundling.TypeMap (KMapEntry (..), TypeMap)
 import Data.Kind (Constraint, Type)
 import GHC.TypeLits (ErrorMessage (..), KnownSymbol, Symbol, TypeError)
-import Data.Proxy (Proxy(Proxy))
 
 type Bundle :: Symbol -> Symbol -> TypeMap -> Type
 data Bundle name owner exports where
@@ -38,20 +36,23 @@ data Bundle name owner exports where
     export ->
     Bundle name owner exports ->
     Bundle name owner (exportName ':-> export : exports)
-  Skipping ::
-    forall exportName export name owner exports.
-    Bundle name owner exports ->
-    Bundle name owner (exportName ':-> export : exports)
 
 data BundleSig where
   BundleSig :: Symbol -> Symbol -> TypeMap -> BundleSig
 
-type GetExport :: Symbol -> Type -> Type -> Constraint
-class GetExport exportName export bundle where
-  getExport :: bundle -> Maybe export
+data Optionality = Optional | Required
 
-instance GetExport exportName export (Bundle name owner '[]) where
-  getExport _ = Nothing
+type OptionalityWrapped :: Optionality -> Type -> Type
+type family OptionalityWrapped cardty t where
+  OptionalityWrapped 'Optional t = Maybe t
+  OptionalityWrapped 'Required t = t
+
+type GetExport :: Symbol -> Type -> Optionality -> Type -> Constraint
+class GetExport exportName export cardty bundle where
+  getExportValue :: bundle -> OptionalityWrapped cardty export
+
+instance GetExport exportName export 'Optional (Bundle name owner '[]) where
+  getExportValue _ = Nothing
 
 type CheckExportType :: Symbol -> Symbol -> Symbol -> Type -> Type -> Constraint
 type family CheckExportType bundleName bundleOwner exportName requiredType actualType where
@@ -83,91 +84,62 @@ instance
 instance
   {-# OVERLAPPING #-}
   (ExportTypeEq name owner exportName requiredExport actualExport) =>
-  GetExport exportName requiredExport (Bundle name owner (exportName ':-> actualExport ': exs))
+  GetExport exportName requiredExport 'Optional (Bundle name owner (exportName ':-> actualExport ': exs))
   where
-  getExport (Exporting export _) = Just export
-  getExport (Skipping _) = Nothing
+  getExportValue (Exporting export _) = Just export
+
+instance
+  {-# OVERLAPPING #-}
+  (ExportTypeEq name owner exportName requiredExport actualExport) =>
+  GetExport exportName requiredExport 'Required (Bundle name owner (exportName ':-> actualExport ': exs))
+  where
+  getExportValue (Exporting export _) = export
 
 instance
   {-# OVERLAPPABLE #-}
-  (GetExport exportName export (Bundle name owner exs)) =>
-  GetExport exportName export (Bundle name owner (exportName' ':-> export' ': exs))
+  (GetExport exportName export 'Required (Bundle name owner exs)) =>
+  GetExport exportName export 'Required (Bundle name owner (exportName' ':-> export' ': exs))
   where
-  getExport (Exporting _ bundle) = getExport @exportName @export bundle
-  getExport (Skipping bundle) = getExport @exportName @export bundle
+  getExportValue (Exporting _ bundle) = getExportValue @exportName @export @ 'Required bundle
 
-type SomeBundle :: TypeMap -> Type
-data SomeBundle requiredExports where
+instance
+  {-# OVERLAPPABLE #-}
+  (GetExport exportName export 'Optional (Bundle name owner exs)) =>
+  GetExport exportName export 'Optional (Bundle name owner (exportName' ':-> export' ': exs))
+  where
+  getExportValue (Exporting _ bundle) = getExportValue @exportName @export @ 'Optional bundle
+
+data SomeBundle where
   SomeBundle ::
-    forall exports (skips :: TypeMap) name owner.
     ( KnownSymbol name
     , KnownSymbol owner
+    , forall exportName export. GetExport exportName export 'Optional (Bundle name owner exports)
     ) =>
     Bundle name owner exports ->
-    Proxy skips ->
-    SomeBundle (Merge exports skips)
+    SomeBundle
 
-instance
-  (forall name owner. GetExport exportName export (Bundle name owner exports)) =>
-  GetExport exportName export (SomeBundle exports)
-  where
-  getExport (SomeBundle bundle (_ :: p skips)) = getExport @exportName @export bundle
-
-type MorphBundle :: (TypeMap -> Type) -> TypeMap -> TypeMap -> Constraint
-class MorphBundle bundleC fromExports toExports where
-  morphBundle :: bundleC fromExports -> bundleC toExports
-
-instance MorphBundle (Bundle name owner) fromExports '[] where
-  {-# INLINE morphBundle #-}
-  morphBundle _ = Bundle @name @owner
-
-instance
-  ( MorphBundle (Bundle name owner) fromExports toMoreExports
-  , GetExport exportName export (Bundle name owner fromExports)
-  ) =>
-  MorphBundle (Bundle name owner) fromExports (exportName ':-> export ': toMoreExports)
-  where
-  {-# INLINE morphBundle #-}
-  morphBundle bundle =
-    case getExport @exportName bundle of
-      Just export -> base & Exporting @exportName export
-      Nothing -> base & Skipping @exportName
-   where
-    base = morphBundle @_ @fromExports @toMoreExports bundle
-
-instance MorphBundle SomeBundle fromExports '[] where
-  {-# INLINE morphBundle #-}
-  morphBundle (SomeBundle (_ :: Bundle name owner exports) (_ :: p skips)) =
-    SomeBundle (Bundle @name @owner) (Proxy @'[])
-
--- instance
---   ( forall name owner. MorphBundle (Bundle name owner) fromExports toMoreExports
---   , forall name owner. GetExport exportName export (Bundle name owner fromExports)
---   ) =>
---   MorphBundle SomeBundle fromExports (exportName ':-> export ': toMoreExports)
---   where
---   {-# INLINE morphBundle #-}
---   morphBundle (SomeBundle bundle (__ :: p skips)) =
---     case morphBundle @_ @fromExports @toMoreExports bundle of
---       base ->
---         case getExport @exportName @export bundle of
---           Just export -> SomeBundle $ base & Exporting @exportName export
---           Nothing -> SomeBundle $ base & Skipping @exportName
-
-{-# INLINE morph #-}
-morph ::
-  forall toExports fromExports bundleC.
-  (MorphBundle bundleC fromExports toExports) =>
-  bundleC fromExports ->
-  bundleC toExports
-morph = morphBundle @_ @fromExports @toExports
+instance GetExport exportName export 'Optional SomeBundle where
+  getExportValue (SomeBundle bundle) = getExportValue @exportName @export @ 'Optional bundle
 
 someBundle ::
-  forall exports name owner bundleExports.
   ( KnownSymbol name
   , KnownSymbol owner
-  , MorphBundle SomeBundle bundleExports exports
+  , forall exportName export. GetExport exportName export 'Optional (Bundle name owner exports)
   ) =>
-  Bundle name owner bundleExports ->
-  SomeBundle exports
-someBundle bundle = morph @exports $ SomeBundle bundle (Proxy @'[])
+  Bundle name owner exports ->
+  SomeBundle
+someBundle = SomeBundle
+
+getExport ::
+  forall (exportName :: Symbol) export bundle.
+  (GetExport exportName export 'Required bundle) =>
+  bundle ->
+  export
+getExport = getExportValue @exportName @export @ 'Required
+
+getExportMaybe ::
+  forall (exportName :: Symbol) export bundle.
+  (GetExport exportName export 'Optional bundle) =>
+  bundle ->
+  Maybe export
+getExportMaybe = getExportValue @exportName @export @ 'Optional
