@@ -51,10 +51,8 @@ library
   hs-source-dirs:      src
   build-depends:       text
   exposed-modules:     Bundling
-                       Bundling.Bundle
-                       Bundling.Factory
-                       Bundling.BundlingSetup
                        Bundling.TypeMap
+                       Bundling.TypeSet
                        HList
                        Scratch
 
