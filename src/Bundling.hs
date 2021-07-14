@@ -118,29 +118,28 @@ factory runFactory = Factory go
   toBundle (BundleTyped meta exports) = Bundle meta (toRepMap exports)
   fromBundle Bundle{bundleMeta, bundleExports} = BundleTyped bundleMeta (fromRepMap bundleExports)
 
-bla :: Factory
-  ('FactorySpec
-     "foo"
-     ('TS.TS '[Word, Char, [Char]])
-     ('TS.TS '[Natural, [Char], [String]]))
+bla ::
+  Factory
+    ( 'FactorySpec
+        "foo"
+        ( 'TS.TS '[Word, Char, [Char]])
+        ( 'TS.TS '[Natural, [Char], [String]])
+    )
 bla =
   factory
     @"foo"
     @'[Word, Char, String]
     @'[Natural, String, [String]]
-    (build . Foldable.foldl' collect empty)
+    ((: []) . build . Foldable.foldl' collect empty)
  where
-  empty :: ([Word], [Char], [String])
   empty = ([], [], [])
   collect (ws, cs, strs) (BundleTyped _ (w ::: c ::: s ::: HNil)) =
     (ws <> Foldable.toList w, cs <> Foldable.toList c, strs <> Foldable.toList s)
-  -- build :: ([BundleMeta], [Word], [Char], [String]) -> [BundleTyped _]
   build (ws, cs, strs) =
-    [ BundleTyped
-        "foo.bundle"
-        ( Just (sum (fromIntegral @_ @Natural <$> ws))
-            ::: Just cs
-            ::: Just strs
-            ::: HNil
-        )
-    ]
+    BundleTyped
+      "foo.bundle"
+      ( Just (sum (fromIntegral @_ @Natural <$> ws))
+          ::: Just cs
+          ::: Just strs
+          ::: HNil
+      )
