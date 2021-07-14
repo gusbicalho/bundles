@@ -40,8 +40,16 @@ import Data.Typeable (Proxy (Proxy), TypeRep, Typeable, typeRep)
 import GHC.Base (Any)
 import GHC.TypeLits (ErrorMessage (..), KnownSymbol, Symbol, TypeError, symbolVal)
 import HList (HList (HNil, (:::)))
-import Unsafe.Coerce (unsafeCoerce)
 import Numeric.Natural (Natural)
+import Unsafe.Coerce (unsafeCoerce)
+
+type MapTypes :: forall k l. (k -> l) -> [k] -> [l]
+type family MapTypes f types where
+  MapTypes _ '[] = '[]
+  MapTypes f (t ': ts) = f t ': MapTypes f ts
+
+type Maybes :: [Type] -> [Type]
+type Maybes types = MapTypes Maybe types
 
 type BundleMeta = String
 type RepMap = [(TypeRep, Any)]
@@ -57,7 +65,7 @@ data Bundle = Bundle
   , bundleExports :: RepMap
   }
 
-data BundleTyped types = BundleTyped BundleMeta (HList types)
+data BundleTyped types = BundleTyped BundleMeta (HList (Maybes types))
 
 getExport :: forall t. (Typeable t) => Bundle -> Maybe t
 getExport (Bundle _ exports) = lookupT @t exports
@@ -97,11 +105,6 @@ standalone feats = Factory $ const [Bundle meta exports]
   meta = symbolVal (Proxy @name) <> ".bundle"
   exports = toRepMap feats
 
-type MapTypes :: forall k l. (k -> l) -> [k] -> [l]
-type family MapTypes f types where
-  MapTypes _ '[] = '[]
-  MapTypes f (t ': ts) = f t ': MapTypes f ts
-
 factory ::
   forall name inputs outputs.
   ( FromRepMap (HList (MapTypes Maybe inputs))
@@ -115,6 +118,11 @@ factory runFactory = Factory go
   toBundle (BundleTyped meta exports) = Bundle meta (toRepMap exports)
   fromBundle Bundle{bundleMeta, bundleExports} = BundleTyped bundleMeta (fromRepMap bundleExports)
 
+bla :: Factory
+  ('FactorySpec
+     "foo"
+     ('TS.TS '[Word, Char, [Char]])
+     ('TS.TS '[Natural, [Char], [String]]))
 bla =
   factory
     @"foo"
@@ -122,6 +130,17 @@ bla =
     @'[Natural, String, [String]]
     (build . Foldable.foldl' collect empty)
  where
-  empty = ([], [], [], [])
-  collect (metas, ws, cs, strs) _ = _
-  build (metas, ws, cs, strs) = _
+  empty :: ([Word], [Char], [String])
+  empty = ([], [], [])
+  collect (ws, cs, strs) (BundleTyped _ (w ::: c ::: s ::: HNil)) =
+    (ws <> Foldable.toList w, cs <> Foldable.toList c, strs <> Foldable.toList s)
+  -- build :: ([BundleMeta], [Word], [Char], [String]) -> [BundleTyped _]
+  build (ws, cs, strs) =
+    [ BundleTyped
+        "foo.bundle"
+        ( Just (sum (fromIntegral @_ @Natural <$> ws))
+            ::: Just cs
+            ::: Just strs
+            ::: HNil
+        )
+    ]
