@@ -23,6 +23,10 @@ type Single t = 'TS '[t]
 type FromList :: [Type] -> TypeSet
 type FromList ts = Union Empty ('TS ts)
 
+type Elements :: TypeSet -> [Type]
+type family Elements ts where
+  Elements ('TS types) = types
+
 type UnionAll :: [TypeSet] -> TypeSet
 type family UnionAll typeSets where
   UnionAll typeSets = UnionAllInto ('TS '[]) typeSets

@@ -33,12 +33,11 @@ module Bundling where
 
 import Bundling.TypeSet (TypeSet)
 import Bundling.TypeSet qualified as TS
-import Control.Arrow ((&&&))
 import Data.Foldable qualified as Foldable
 import Data.Kind (Constraint, Type)
 import Data.Typeable (Proxy (Proxy), TypeRep, Typeable, typeRep)
 import GHC.Base (Any)
-import GHC.TypeLits (ErrorMessage (..), KnownSymbol, Symbol, TypeError, symbolVal)
+import GHC.TypeLits (KnownSymbol, Symbol, symbolVal)
 import HList (HList (HNil, (:::)))
 import Numeric.Natural (Natural)
 import Unsafe.Coerce (unsafeCoerce)
@@ -60,27 +59,30 @@ lookupT repMap =
     Nothing -> Nothing
     Just a -> Just (unsafeCoerce a :: t)
 
-data Bundle = Bundle
+data DynBundle = DynBundle
   { bundleMeta :: BundleMeta
   , bundleExports :: RepMap
   }
 
-data BundleTyped types = BundleTyped BundleMeta (HList (Maybes types))
+data Bundle types = Bundle BundleMeta (HList (Maybes types))
 
-getExport :: forall t. (Typeable t) => Bundle -> Maybe t
-getExport (Bundle _ exports) = lookupT @t exports
+getExport :: forall t. (Typeable t) => DynBundle -> Maybe t
+getExport (DynBundle _ exports) = lookupT @t exports
 
 data FactorySpec
   = FactorySpec Symbol TypeSet TypeSet
 
 newtype Factory (spec :: FactorySpec)
-  = Factory ([Bundle] -> [Bundle])
+  = Factory ([DynBundle] -> [DynBundle])
 
 class ToRepMap t where
   toRepMap :: t -> RepMap
 
 instance ToRepMap (HList '[]) where
   toRepMap HNil = []
+
+type AllUniqueTypes :: [Type] -> Constraint
+type AllUniqueTypes types = types ~ TS.Elements (TS.FromList types)
 
 instance (Typeable t, ToRepMap (HList ts)) => ToRepMap (HList (t ': ts)) where
   toRepMap (a ::: more) =
@@ -95,48 +97,59 @@ instance FromRepMap (HList '[]) where
 instance (t ~ Maybe u, Typeable u, FromRepMap (HList ts)) => FromRepMap (HList (t ': ts)) where
   fromRepMap repMap = lookupT @u repMap ::: fromRepMap @(HList ts) repMap
 
+type HListOfInputs t inputs =
+  ( t ~ HList (Maybes inputs)
+  , AllUniqueTypes inputs
+  , FromRepMap t
+  )
+
+type ValidInputs inputs = HListOfInputs (HList (Maybes inputs)) inputs
+
+type HListOfOutputs t outputs =
+  ( t ~ HList (Maybes outputs)
+  , AllUniqueTypes outputs
+  , ToRepMap t
+  )
+
+type ValidOutputs outputs = HListOfOutputs (HList (Maybes outputs)) outputs
+
 standalone ::
-  forall name types.
-  (ToRepMap (HList types), KnownSymbol name) =>
-  HList types ->
+  forall name types t.
+  (HListOfOutputs t types, KnownSymbol name) =>
+  t ->
   Factory ( 'FactorySpec name TS.Empty (TS.FromList types))
-standalone feats = Factory $ const [Bundle meta exports]
+standalone feats = Factory $ const [DynBundle meta exports]
  where
   meta = symbolVal (Proxy @name) <> ".bundle"
   exports = toRepMap feats
 
 factory ::
   forall name inputs outputs.
-  ( FromRepMap (HList (MapTypes Maybe inputs))
-  , ToRepMap (HList (MapTypes Maybe outputs))
+  ( ValidInputs inputs
+  , ValidOutputs outputs
   ) =>
-  ([BundleTyped inputs] -> [BundleTyped outputs]) ->
+  ([Bundle inputs] -> [Bundle outputs]) ->
   Factory ( 'FactorySpec name (TS.FromList inputs) (TS.FromList outputs))
 factory runFactory = Factory go
  where
   go bundles = toBundle <$> runFactory (fromBundle <$> bundles)
-  toBundle (BundleTyped meta exports) = Bundle meta (toRepMap exports)
-  fromBundle Bundle{bundleMeta, bundleExports} = BundleTyped bundleMeta (fromRepMap bundleExports)
+  toBundle (Bundle meta exports) = DynBundle meta (toRepMap exports)
+  fromBundle DynBundle{bundleMeta, bundleExports} = Bundle bundleMeta (fromRepMap bundleExports)
 
-bla ::
+fooFactory ::
   Factory
     ( 'FactorySpec
         "foo"
-        ( 'TS.TS '[Word, Char, [Char]])
-        ( 'TS.TS '[Natural, [Char], [String]])
+        (TS.FromList '[Word, Char, [Char]])
+        (TS.FromList '[Natural, [Char], [String]])
     )
-bla =
-  factory
-    @"foo"
-    @'[Word, Char, String]
-    @'[Natural, String, [String]]
-    ((: []) . build . Foldable.foldl' collect empty)
+fooFactory = factory (pure . build . Foldable.foldl' collect empty)
  where
   empty = ([], [], [])
-  collect (ws, cs, strs) (BundleTyped _ (w ::: c ::: s ::: HNil)) =
+  collect (ws, cs, strs) (Bundle _ (w ::: c ::: s ::: HNil)) =
     (ws <> Foldable.toList w, cs <> Foldable.toList c, strs <> Foldable.toList s)
   build (ws, cs, strs) =
-    BundleTyped
+    Bundle
       "foo.bundle"
       ( Just (sum (fromIntegral @_ @Natural <$> ws))
           ::: Just cs
