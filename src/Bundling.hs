@@ -29,18 +29,16 @@ Maintainer: Gustavo Bicalho <gusbicalho@gmail.com>
 
 See README for more info
 -}
-module Bundling where
+module Bundling () where
 
+import Bundling.RepMap (RepMap)
+import Bundling.RepMap qualified as RepMap
 import Bundling.TypeSet (TypeSet)
 import Bundling.TypeSet qualified as TS
-import Data.Foldable qualified as Foldable
 import Data.Kind (Constraint, Type)
-import Data.Typeable (Proxy (Proxy), TypeRep, Typeable, typeRep)
-import GHC.Base (Any)
-import GHC.TypeLits (KnownSymbol, Symbol, symbolVal)
-import HList (HList (HNil, (:::)))
-import Numeric.Natural (Natural)
-import Unsafe.Coerce (unsafeCoerce)
+import Data.Typeable (Typeable)
+import GHC.TypeLits (Symbol)
+import HList (HList)
 
 type MapTypes :: forall k l. (k -> l) -> [k] -> [l]
 type family MapTypes f types where
@@ -50,57 +48,33 @@ type family MapTypes f types where
 type Maybes :: [Type] -> [Type]
 type Maybes types = MapTypes Maybe types
 
-type BundleMeta = String
-type RepMap = [(TypeRep, Any)]
-
-lookupT :: forall t. (Typeable t) => RepMap -> Maybe t
-lookupT repMap =
-  case lookup (typeRep (Proxy @t)) repMap of
-    Nothing -> Nothing
-    Just a -> Just (unsafeCoerce a :: t)
-
-data DynBundle = DynBundle
-  { bundleMeta :: BundleMeta
+data DynBundle meta = DynBundle
+  { bundleMeta :: meta
   , bundleExports :: RepMap
   }
 
-data Bundle types = Bundle BundleMeta (HList (Maybes types))
+data Bundle meta types = Bundle meta (HList (Maybes types))
 
-getExport :: forall t. (Typeable t) => DynBundle -> Maybe t
-getExport (DynBundle _ exports) = lookupT @t exports
+getExport :: forall t meta. (Typeable t) => DynBundle meta -> Maybe t
+getExport (DynBundle _ exports) = RepMap.lookup @t exports
 
 data FactorySpec
-  = FactorySpec Symbol TypeSet TypeSet
+  = FactorySpec Symbol Type TypeSet TypeSet
+
+type FactoryBundleMeta :: FactorySpec -> Type
+type family FactoryBundleMeta spec where
+  FactoryBundleMeta ( 'FactorySpec _ bundleMeta _ _) = bundleMeta
 
 newtype Factory (spec :: FactorySpec)
-  = Factory ([DynBundle] -> [DynBundle])
-
-class ToRepMap t where
-  toRepMap :: t -> RepMap
-
-instance ToRepMap (HList '[]) where
-  toRepMap HNil = []
+  = Factory ([DynBundle (FactoryBundleMeta spec)] -> [DynBundle (FactoryBundleMeta spec)])
 
 type AllUniqueTypes :: [Type] -> Constraint
 type AllUniqueTypes types = types ~ TS.Elements (TS.FromList types)
 
-instance (Typeable t, ToRepMap (HList ts)) => ToRepMap (HList (t ': ts)) where
-  toRepMap (a ::: more) =
-    (typeRep (Proxy @t), unsafeCoerce a) : toRepMap more
-
-class FromRepMap t where
-  fromRepMap :: RepMap -> t
-
-instance FromRepMap (HList '[]) where
-  fromRepMap _ = HNil
-
-instance (t ~ Maybe u, Typeable u, FromRepMap (HList ts)) => FromRepMap (HList (t ': ts)) where
-  fromRepMap repMap = lookupT @u repMap ::: fromRepMap @(HList ts) repMap
-
 type HListOfInputs t inputs =
   ( t ~ HList (Maybes inputs)
   , AllUniqueTypes inputs
-  , FromRepMap t
+  , RepMap.FromRepMap t
   )
 
 type ValidInputs inputs = HListOfInputs (HList (Maybes inputs)) inputs
@@ -108,51 +82,31 @@ type ValidInputs inputs = HListOfInputs (HList (Maybes inputs)) inputs
 type HListOfOutputs t outputs =
   ( t ~ HList (Maybes outputs)
   , AllUniqueTypes outputs
-  , ToRepMap t
+  , RepMap.ToRepMap t
   )
 
 type ValidOutputs outputs = HListOfOutputs (HList (Maybes outputs)) outputs
 
 standalone ::
-  forall name types t.
-  (HListOfOutputs t types, KnownSymbol name) =>
-  t ->
-  Factory ( 'FactorySpec name TS.Empty (TS.FromList types))
-standalone feats = Factory $ const [DynBundle meta exports]
+  forall name types bundleMeta output.
+  (HListOfOutputs output types) =>
+  bundleMeta ->
+  output ->
+  Factory ( 'FactorySpec name bundleMeta TS.Empty (TS.FromList types))
+standalone meta exportsList = Factory $ const [DynBundle meta exports]
  where
-  meta = symbolVal (Proxy @name) <> ".bundle"
-  exports = toRepMap feats
+  exports = RepMap.toRepMap exportsList
 
 factory ::
-  forall name inputs outputs.
+  forall name inputs outputs bundleMeta.
   ( ValidInputs inputs
   , ValidOutputs outputs
   ) =>
-  ([Bundle inputs] -> [Bundle outputs]) ->
-  Factory ( 'FactorySpec name (TS.FromList inputs) (TS.FromList outputs))
+  ([Bundle bundleMeta inputs] -> [Bundle bundleMeta outputs]) ->
+  Factory ( 'FactorySpec name bundleMeta (TS.FromList inputs) (TS.FromList outputs))
 factory runFactory = Factory go
  where
   go bundles = toBundle <$> runFactory (fromBundle <$> bundles)
-  toBundle (Bundle meta exports) = DynBundle meta (toRepMap exports)
-  fromBundle DynBundle{bundleMeta, bundleExports} = Bundle bundleMeta (fromRepMap bundleExports)
-
-fooFactory ::
-  Factory
-    ( 'FactorySpec
-        "foo"
-        (TS.FromList '[Word, Char, [Char]])
-        (TS.FromList '[Natural, [Char], [String]])
-    )
-fooFactory = factory (pure . build . Foldable.foldl' collect empty)
- where
-  empty = ([], [], [])
-  collect (ws, cs, strs) (Bundle _ (w ::: c ::: s ::: HNil)) =
-    (ws <> Foldable.toList w, cs <> Foldable.toList c, strs <> Foldable.toList s)
-  build (ws, cs, strs) =
-    Bundle
-      "foo.bundle"
-      ( Just (sum (fromIntegral @_ @Natural <$> ws))
-          ::: Just cs
-          ::: Just strs
-          ::: HNil
-      )
+  toBundle (Bundle meta exports) = DynBundle meta (RepMap.toRepMap exports)
+  fromBundle DynBundle{bundleMeta, bundleExports} =
+    Bundle bundleMeta (RepMap.fromRepMap bundleExports)

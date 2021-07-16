@@ -8,9 +8,21 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE NoStarIsType #-}
 
-module Bundling.TypeSet where
+module Bundling.TypeSet (
+  TypeSet,
+  Empty,
+  Single,
+  FromList,
+  Elements,
+  UnionAll,
+  Union,
+  Diff,
+  Elem,
+  UnionRightDiffIsIdentity,
+  UnionLeftDiffIsIdentity,
+) where
 
-import Data.Kind (Type, Constraint)
+import Data.Kind (Constraint, Type)
 
 newtype TypeSet = TS [Type]
 
@@ -21,15 +33,15 @@ type Single :: Type -> TypeSet
 type Single t = 'TS '[t]
 
 type FromList :: [Type] -> TypeSet
-type FromList ts = Union Empty ('TS ts)
+type FromList ts = Union Empty ( 'TS ts)
 
 type Elements :: TypeSet -> [Type]
 type family Elements ts where
-  Elements ('TS types) = types
+  Elements ( 'TS types) = types
 
 type UnionAll :: [TypeSet] -> TypeSet
 type family UnionAll typeSets where
-  UnionAll typeSets = UnionAllInto ('TS '[]) typeSets
+  UnionAll typeSets = UnionAllInto ( 'TS '[]) typeSets
 
 type UnionAllInto :: TypeSet -> [TypeSet] -> TypeSet
 type family UnionAllInto into typeSets where
@@ -66,6 +78,6 @@ type UnionLeftDiffIsIdentity a b = Union (Diff a b) b ~ a
 
 type Elem :: Type -> TypeSet -> Bool
 type family Elem t set where
-  Elem t ('TS '[]) = 'False
-  Elem t ('TS (t ': _)) = 'True
-  Elem t ('TS (u ': more)) = Elem t ('TS more)
+  Elem t ( 'TS '[]) = 'False
+  Elem t ( 'TS (t ': _)) = 'True
+  Elem t ( 'TS (u ': more)) = Elem t ( 'TS more)
