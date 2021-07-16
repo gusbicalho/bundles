@@ -55,6 +55,7 @@ library
                        Bundling.TypeSet
                        HList
                        Scratch
+                       Examples
 
 test-suite bundles-test
   import:              common-options

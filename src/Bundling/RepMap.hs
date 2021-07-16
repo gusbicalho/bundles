@@ -1,4 +1,5 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ImportQualifiedPost #-}
@@ -12,17 +13,19 @@ module Bundling.RepMap (
   Bundling.RepMap.lookup,
   empty,
   insert,
+  size,
   ToRepMap (..),
   FromRepMap (..),
 ) where
 
+import Data.Foldable qualified as Foldable
 import Data.Maybe (Maybe (Just, Nothing))
 import Data.Proxy (Proxy (Proxy))
 import Data.Typeable (TypeRep, Typeable, typeRep)
 import GHC.Exts (Any)
 import HList (HList (HNil, (:::)))
 import Unsafe.Coerce (unsafeCoerce)
-import Prelude (otherwise, (==))
+import Prelude (Int, otherwise, (==))
 import Prelude qualified
 
 newtype RepMap = MkRepMap [(TypeRep, Any)]
@@ -45,6 +48,9 @@ insert v (MkRepMap repMap) = MkRepMap (go repMap)
     | rep' == rep = (rep, unsafeCoerce v) : more
     | otherwise = entry : go more
 
+size :: RepMap -> Int
+size (MkRepMap repMap) = Foldable.length repMap
+
 class ToRepMap t where
   toRepMap :: t -> RepMap
 
@@ -54,8 +60,10 @@ class FromRepMap t where
 instance ToRepMap (HList '[]) where
   toRepMap HNil = empty
 
-instance (Typeable t, ToRepMap (HList ts)) => ToRepMap (HList (t ': ts)) where
-  toRepMap (a ::: more) = insert a (toRepMap more)
+instance (t ~ Maybe u, Typeable u, ToRepMap (HList ts)) => ToRepMap (HList (t ': ts)) where
+  toRepMap (a ::: more) = case a of
+    Nothing -> toRepMap more
+    Just a' -> insert a' (toRepMap more)
 
 instance FromRepMap (HList '[]) where
   fromRepMap _ = HNil

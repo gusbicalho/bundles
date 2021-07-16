@@ -34,3 +34,6 @@ deriving stock instance (Eq x, Eq (HList xs)) => Eq (HList (x ': xs))
 deriving stock instance Ord (HList '[])
 
 deriving stock instance (Ord x, Ord (HList xs)) => Ord (HList (x ': xs))
+
+deriving stock instance Show (HList '[])
+deriving stock instance (Show x, Show (HList xs)) => Show (HList (x ': xs))
