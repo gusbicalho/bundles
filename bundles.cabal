@@ -51,6 +51,11 @@ library
   hs-source-dirs:      src
   build-depends:       text
   exposed-modules:     Bundling
+                       Bundling.Assemble
+                       Bundling.Bundle
+                       Bundling.Constraints.All
+                       Bundling.Factory
+                       Bundling.RepMap
                        Bundling.TypeMap
                        Bundling.TypeSet
                        HList

@@ -4,6 +4,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# OPTIONS_GHC -Wno-missing-export-lists #-}
 
 module Examples where
 
@@ -14,12 +15,12 @@ import Data.Function ((&))
 import Data.Maybe qualified as Maybe
 import Data.Monoid (Sum (Sum))
 import Data.Typeable (Typeable)
+import Debug.Trace qualified as Trace
 import HList (HList (HNil, (:::)))
 import Numeric.Natural (Natural)
-import qualified Debug.Trace as Trace
 
 newtype Bla = Bla Natural
-  deriving stock Show
+  deriving stock (Show)
   deriving (Semigroup, Monoid) via (Sum Natural)
 
 blaFactory ::

@@ -18,4 +18,3 @@ module Scratch () where
 -- type family GetExports exs where
 --   GetExports '[] = '[]
 --   GetExports (exportName ':-> export : exs) = (GetExport exportName export : GetExports exs)
-import Data.Kind (Constraint, Type)

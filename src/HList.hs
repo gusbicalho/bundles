@@ -11,10 +11,12 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE DeriveGeneric #-}
 
 module HList (HList (..)) where
 
 import Data.Kind (Type)
+import GHC.Generics (Generic)
 
 -- definition copied from HList package
 
@@ -22,8 +24,10 @@ type HList :: [Type] -> Type
 data family HList ts
 
 data instance HList '[] = HNil
+  deriving stock Generic
 
 data instance HList (x ': xs) = x ::: HList xs
+  deriving stock Generic
 
 infixr 5 :::
 

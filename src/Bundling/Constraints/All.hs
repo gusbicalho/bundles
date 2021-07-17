@@ -7,7 +7,7 @@
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
 
-module Bundling.Constraints.All where
+module Bundling.Constraints.All (All, AllF) where
 
 import Data.Kind (Constraint, Type)
 
