@@ -49,7 +49,7 @@ common common-options
 library
   import:              common-options
   hs-source-dirs:      src
-  build-depends:       text
+  build-depends:
   exposed-modules:     Bundling
                        Bundling.Assemble
                        Bundling.Bundle

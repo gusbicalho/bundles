@@ -53,21 +53,30 @@ assembler doAssemble = Assembler (doAssemble . Maybe.mapMaybe dynamicToTyped . t
 
 type Assemble :: Type -> Type -> Constraint
 class Assemble assemblers bundleMeta where
-  type AssembleResults assemblers :: [Type]
-  assemble :: assemblers -> [DynamicBundle bundleMeta] -> HList (AssembleResults assemblers)
+  type AssembleResults assemblers :: Type
+  assemble :: assemblers -> [DynamicBundle bundleMeta] -> AssembleResults assemblers
 
+-- Assemble HList
 instance Assemble (HList '[]) bundleMeta where
-  type AssembleResults (HList '[]) = '[]
+  type AssembleResults (HList '[]) = HList '[]
   assemble _ _ = HNil
+
+type TypesOfHList :: Type -> [Type]
+type family TypesOfHList hlist where
+  TypesOfHList (HList ts) = ts
+  TypesOfHList t =
+    TypeError ( 'Text "Expected HList, but found " ':$$: 'ShowType t)
 
 instance
   ( bundleMeta ~ assemblerBundleMeta
   , Assemble (HList moreAssemblers) bundleMeta
+  , AssembleResults (HList moreAssemblers)
+      ~ HList (TypesOfHList (AssembleResults (HList moreAssemblers)))
   ) =>
   Assemble (HList (Assembler assemblerBundleMeta assemblerResult ': moreAssemblers)) bundleMeta
   where
   type
     AssembleResults (HList (Assembler assemblerBundleMeta assemblerResult ': moreAssemblers)) =
-      assemblerResult ': AssembleResults (HList moreAssemblers)
+      HList (assemblerResult ': TypesOfHList (AssembleResults (HList moreAssemblers)))
   assemble (asm ::: moreAsms) bundles =
     runAssembler asm bundles ::: assemble moreAsms bundles

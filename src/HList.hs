@@ -1,17 +1,13 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FunctionalDependencies #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE DeriveGeneric #-}
 
 module HList (HList (..)) where
 
@@ -24,10 +20,10 @@ type HList :: [Type] -> Type
 data family HList ts
 
 data instance HList '[] = HNil
-  deriving stock Generic
+  deriving stock (Generic)
 
 data instance HList (x ': xs) = x ::: HList xs
-  deriving stock Generic
+  deriving stock (Generic)
 
 infixr 5 :::
 
