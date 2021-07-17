@@ -56,6 +56,7 @@ library
                        Bundling.Constraints.All
                        Bundling.Factory
                        Bundling.RepMap
+                       Bundling.Setup
                        Bundling.TypeMap
                        Bundling.TypeSet
                        HList
