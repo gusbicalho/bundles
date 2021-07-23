@@ -2,15 +2,16 @@ module Bundling (
   module Bundling.Assemble,
   module Bundling.Bundle,
   module Bundling.Factory,
+  module Bundling.Setup,
 ) where
 
 import Bundling.Assemble (
   Assembler,
   assemble,
   assembler,
+  collector,
   foldMapper,
   folder,
-  collector,
   runAssembler,
  )
 import Bundling.Bundle (
@@ -32,4 +33,9 @@ import Bundling.Factory (
   factory,
   runFactory,
   standalone,
+ )
+import Bundling.Setup (
+  Setup (..),
+  assembleSetup,
+  runSetup,
  )

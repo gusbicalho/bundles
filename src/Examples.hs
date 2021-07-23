@@ -64,3 +64,12 @@ assembled = B.assemble (B.collector @Bla ::: B.folder @Bla ::: HNil) bundles
 
 -- >>> assembled
 -- [Bla 42,Bla 17,Bla 59] ::: (Bla 118 ::: HNil)
+
+assembledSetup :: HList '[[Bla], Bla]
+assembledSetup =
+  B.assembleSetup
+    (B.collector @Bla ::: B.folder @Bla ::: HNil)
+    (blaFactory 42 B.:>> blaFactory 17 B.:>> fooFactory B.:>> B.Empty)
+
+-- >>> assembledSetup
+-- [Bla 42,Bla 17,Bla 59] ::: (Bla 118 ::: HNil)

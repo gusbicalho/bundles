@@ -16,7 +16,8 @@ module Bundling.Assemble (
   Assembler,
   runAssembler,
   assembler,
-  assemble,
+  Assemble (assemble),
+  AssembleResults,
   foldMapper,
   collector,
   folder,
@@ -73,7 +74,7 @@ folder :: forall t. (Typeable t, Monoid t) => Assembler String t
 folder = foldMapper id
 
 collector :: forall t. Typeable t => Assembler String [t]
-collector = foldMapper (: [])
+collector = foldMapper pure
 
 -- Assemble HList
 instance Assemble (HList '[]) bundleMeta where
