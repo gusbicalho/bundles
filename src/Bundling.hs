@@ -8,6 +8,9 @@ import Bundling.Assemble (
   Assembler,
   assemble,
   assembler,
+  foldMapper,
+  folder,
+  collector,
   runAssembler,
  )
 import Bundling.Bundle (
@@ -24,6 +27,7 @@ import Bundling.Bundle (
 import Bundling.Factory (
   Factory,
   FactorySpec (..),
+  ValidFactory,
   addFromFactory,
   factory,
   runFactory,

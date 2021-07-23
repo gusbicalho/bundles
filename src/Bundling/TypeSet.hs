@@ -4,6 +4,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE NoStarIsType #-}
@@ -36,8 +37,9 @@ type FromList :: [Type] -> TypeSet
 type FromList ts = Union Empty ( 'TS ts)
 
 type Elements :: TypeSet -> [Type]
-type family Elements ts where
-  Elements ( 'TS types) = types
+type family Elements ts = types | types -> ts where
+  Elements ( 'TS '[]) = '[]
+  Elements ( 'TS (t ': ts)) = t ': Elements ( 'TS ts)
 
 type UnionAll :: [TypeSet] -> TypeSet
 type family UnionAll typeSets where

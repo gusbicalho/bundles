@@ -9,13 +9,12 @@
 module Examples where
 
 import Bundling qualified as B
+import Bundling.Bundle (Bundle (Bundle))
 import Bundling.TypeSet qualified as TS
 import Data.Foldable qualified as Foldable
 import Data.Function ((&))
 import Data.Maybe qualified as Maybe
 import Data.Monoid (Sum (Sum))
-import Data.Typeable (Typeable)
-import Debug.Trace qualified as Trace
 import HList (HList (HNil, (:::)))
 import Numeric.Natural (Natural)
 
@@ -32,7 +31,7 @@ blaFactory ::
         TS.Empty
         (TS.FromList '[Bla])
     )
-blaFactory nat = B.standalone @"bla" "bla" (Just (Bla nat) ::: HNil)
+blaFactory nat = B.standalone @"bla" $ Bundle "bla" (Just (Bla nat) ::: HNil)
 
 fooFactory ::
   B.Factory
@@ -60,14 +59,8 @@ bundles :: [B.DynamicBundle [Char]]
 bundles =
   [] & B.addFromFactory (blaFactory 42) & B.addFromFactory (blaFactory 17) & B.addFromFactory fooFactory
 
-collectAll :: forall t. Typeable t => B.Assembler String [t]
-collectAll = B.assembler (Foldable.foldMap $ \(B.Bundle meta (e ::: HNil)) -> Trace.trace ("meta: " <> meta) `seq` Maybe.maybeToList e)
-
-mappendAll :: forall t. (Typeable t, Monoid t) => B.Assembler String t
-mappendAll = B.assembler (Foldable.foldMap $ \(B.Bundle _ (e ::: HNil)) -> Maybe.fromMaybe mempty e)
-
 assembled :: HList '[[Bla], Bla]
-assembled = B.assemble (collectAll @Bla ::: mappendAll @Bla ::: HNil) bundles
+assembled = B.assemble (B.collector @Bla ::: B.folder @Bla ::: HNil) bundles
 
 -- >>> assembled
 -- [Bla 42,Bla 17,Bla 59] ::: (Bla 118 ::: HNil)

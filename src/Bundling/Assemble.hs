@@ -1,10 +1,13 @@
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -14,6 +17,9 @@ module Bundling.Assemble (
   runAssembler,
   assembler,
   assemble,
+  foldMapper,
+  collector,
+  folder,
 ) where
 
 import Bundling.Bundle (
@@ -22,13 +28,15 @@ import Bundling.Bundle (
   ValidInputs,
   dynamicToTyped,
  )
+import Data.Foldable qualified as Foldable
 import Data.Kind (Constraint, Type)
 import Data.Maybe qualified as Maybe
-import Debug.Trace qualified as Trace
+import Data.Typeable (Typeable)
 import GHC.TypeLits (ErrorMessage (ShowType, Text, (:$$:)), TypeError)
 import HList (HList (HNil, (:::)))
 
 newtype Assembler bundleMeta t = Assembler {runAssembler :: [DynamicBundle bundleMeta] -> t}
+  deriving stock (Functor)
 
 type AssemblerBundleMeta :: Type -> Type
 type family AssemblerBundleMeta spec where
@@ -42,19 +50,30 @@ type family AssemblerBundleMeta spec where
 assembler ::
   forall inputs output meta.
   ( ValidInputs inputs
-  , Show meta
   ) =>
   ([Bundle meta inputs] -> output) ->
   Assembler meta output
-assembler doAssemble = Assembler (doAssemble . Maybe.mapMaybe dynamicToTyped . traceMetas)
- where
-  traceMetas [] = []
-  traceMetas (b@(DynamicBundle meta _) : more) = Trace.traceShow meta `seq` (b : traceMetas more)
+assembler doAssemble = Assembler (doAssemble . Maybe.mapMaybe (dynamicToTyped @inputs))
 
 type Assemble :: Type -> Type -> Constraint
 class Assemble assemblers bundleMeta where
   type AssembleResults assemblers :: Type
   assemble :: assemblers -> [DynamicBundle bundleMeta] -> AssembleResults assemblers
+
+-- Useful assemblers
+
+foldMapper ::
+  forall u output meta.
+  (Typeable u, Monoid output) =>
+  (u -> output) ->
+  Assembler meta output
+foldMapper f = assembler $ Foldable.foldMap $ \(Bundle _ (e ::: HNil)) -> maybe mempty f e
+
+folder :: forall t. (Typeable t, Monoid t) => Assembler String t
+folder = foldMapper id
+
+collector :: forall t. Typeable t => Assembler String [t]
+collector = foldMapper (: [])
 
 -- Assemble HList
 instance Assemble (HList '[]) bundleMeta where
