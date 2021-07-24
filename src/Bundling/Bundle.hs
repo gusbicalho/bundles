@@ -1,175 +1,100 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE QuantifiedConstraints #-}
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Bundling.Bundle (
   Bundle (..),
-  BundleSig (..),
-  SomeBundle (..),
-  someBundle,
-  TypeMap,
-  TypeMapEntry (..),
-  GetExport,
-  getExport,
-  MorphBundle,
-  morph,
+  DynamicBundle (..),
+  Maybes,
+  HListOfInputs,
+  ValidInputs,
+  HListOfOutputs,
+  ValidOutputs,
+  dynamicToTyped,
+  typedToDynamic,
+  bundleExports,
 ) where
 
-import Data.Function ((&))
+import Bundling.RepMap (RepMap)
+import Bundling.RepMap qualified as RepMap
+import Bundling.TypeSet (TypeSet)
+import Bundling.TypeSet qualified as TS
 import Data.Kind (Constraint, Type)
-import GHC.TypeLits (ErrorMessage (..), KnownSymbol, Symbol, TypeError)
+import HList (HList (HNil, (:::)))
 
-data TypeMapEntry = Symbol :-> Type
+type Maybes :: [Type] -> [Type]
+type family Maybes types = maybes | maybes -> types where
+  Maybes '[] = '[]
+  Maybes (t ': ts) = Maybe t ': Maybes ts
 
-type TypeMap = [TypeMapEntry]
+data DynamicBundle meta = DynamicBundle meta RepMap
 
-type Bundle :: Symbol -> Symbol -> TypeMap -> Type
-data Bundle name owner exports where
-  Bundle :: Bundle name owner '[]
-  Exporting ::
-    forall exportName export name owner exports.
-    export ->
-    Bundle name owner exports ->
-    Bundle name owner (exportName ':-> export : exports)
-  Skipping ::
-    forall exportName export name owner exports.
-    Bundle name owner exports ->
-    Bundle name owner (exportName ':-> export : exports)
+type Bundle :: Type -> TypeSet -> Type
+data Bundle meta types where
+  Bundle ::
+    meta ->
+    HList (Maybes (TS.Elements types)) ->
+    Bundle meta types
 
-data BundleSig where
-  BundleSig :: Symbol -> Symbol -> TypeMap -> BundleSig
+deriving stock instance (Show meta, Show (HList (Maybes (TS.Elements types)))) => Show (Bundle meta types)
 
-type GetExport :: Symbol -> Type -> Type -> Constraint
-class GetExport exportName export bundle where
-  getExport :: bundle -> Maybe export
+type AllUniqueTypes :: [Type] -> Constraint
+type AllUniqueTypes types = types ~ TS.Elements (TS.FromList types)
 
-instance GetExport exportName export (Bundle name owner '[]) where
-  getExport _ = Nothing
+class TestAllEntriesAreEmpty types where
+  allEntriesAreEmpty :: HList (Maybes types) -> Bool
 
-type CheckExportType :: Symbol -> Symbol -> Symbol -> Type -> Type -> Constraint
-type family CheckExportType bundleName bundleOwner exportName requiredType actualType where
-  CheckExportType _ _ _ t t = t ~ t
-  CheckExportType bundleName bundleOwner exportName requiredType actualType =
-    TypeError
-      ( 'Text "Required export " ':<>: 'Text exportName ':<>: 'Text " with type:"
-          ':$$: 'ShowType requiredType
-          ':$$: ( 'Text "However, bundle " ':<>: 'Text bundleName
-                    ':<>: 'Text ", owned by "
-                    ':<>: 'Text bundleOwner
-                    ':<>: 'Text ", exports "
-                    ':<>: 'Text exportName
-                    ':<>: 'Text " with type:"
-                )
-          ':$$: 'ShowType actualType
-      )
+instance TestAllEntriesAreEmpty '[] where
+  allEntriesAreEmpty HNil = True
 
-type ExportTypeEq :: Symbol -> Symbol -> Symbol -> Type -> Type -> Constraint
-class
-  (requiredExport ~ actualExport) =>
-  ExportTypeEq name owner exportName requiredExport actualExport
-instance
-  ( CheckExportType name owner exportName requiredExport actualExport
-  , requiredExport ~ actualExport
-  ) =>
-  ExportTypeEq name owner exportName requiredExport actualExport
+instance TestAllEntriesAreEmpty types => TestAllEntriesAreEmpty (t ': types) where
+  allEntriesAreEmpty (a ::: more) = case a of
+    Just _ -> False
+    Nothing -> allEntriesAreEmpty more
 
-instance
-  {-# OVERLAPPING #-}
-  (ExportTypeEq name owner exportName requiredExport actualExport) =>
-  GetExport exportName requiredExport (Bundle name owner (exportName ':-> actualExport ': exs))
-  where
-  getExport (Exporting export _) = Just export
-  getExport (Skipping _) = Nothing
+type HListOfInputs t inputs =
+  ( t ~ HList (Maybes (TS.Elements inputs))
+  , AllUniqueTypes (TS.Elements inputs)
+  , TestAllEntriesAreEmpty (TS.Elements inputs)
+  , RepMap.FromRepMap t
+  )
 
-instance
-  {-# OVERLAPPABLE #-}
-  (GetExport exportName export (Bundle name owner exs)) =>
-  GetExport exportName export (Bundle name owner (exportName' ':-> export' ': exs))
-  where
-  getExport (Exporting _ bundle) = getExport @exportName @export bundle
-  getExport (Skipping bundle) = getExport @exportName @export bundle
+type ValidInputs inputs = HListOfInputs (HList (Maybes (TS.Elements inputs))) inputs
 
-type SomeBundle :: TypeMap -> Type
-data SomeBundle requiredExports where
-  SomeBundle ::
-    forall exports name owner.
-    ( KnownSymbol name
-    , KnownSymbol owner
-    ) =>
-    Bundle name owner exports ->
-    SomeBundle exports
+type HListOfOutputs t outputs =
+  ( t ~ HList (Maybes (TS.Elements outputs))
+  , AllUniqueTypes (TS.Elements outputs)
+  , RepMap.ToRepMap t
+  )
 
-instance
-  (forall name owner. GetExport exportName export (Bundle name owner exports)) =>
-  GetExport exportName export (SomeBundle exports)
-  where
-  getExport (SomeBundle bundle) = getExport @exportName @export bundle
+type ValidOutputs outputs = HListOfOutputs (HList (Maybes (TS.Elements outputs))) outputs
 
-type MorphBundle :: (TypeMap -> Type) -> TypeMap -> TypeMap -> Constraint
-class MorphBundle bundleC fromExports toExports where
-  morphBundle :: bundleC fromExports -> bundleC toExports
+dynamicToTyped ::
+  forall types meta.
+  ValidInputs types =>
+  DynamicBundle meta ->
+  Maybe (Bundle meta types)
+dynamicToTyped (DynamicBundle bundleMeta repMap) =
+  case RepMap.fromRepMap repMap of
+    typedExports
+      | allEntriesAreEmpty typedExports -> Nothing
+      | otherwise -> Just (Bundle bundleMeta typedExports)
 
-instance MorphBundle (Bundle name owner) fromExports '[] where
-  {-# INLINE morphBundle #-}
-  morphBundle _ = Bundle @name @owner
+bundleExports :: Bundle meta types -> HList (Maybes (TS.Elements types))
+bundleExports (Bundle _ exports) = exports
 
-instance
-  ( MorphBundle (Bundle name owner) fromExports toMoreExports
-  , GetExport exportName export (Bundle name owner fromExports)
-  ) =>
-  MorphBundle (Bundle name owner) fromExports (exportName ':-> export ': toMoreExports)
-  where
-  {-# INLINE morphBundle #-}
-  morphBundle bundle =
-    case getExport @exportName bundle of
-      Just export -> base & Exporting @exportName export
-      Nothing -> base & Skipping @exportName
-   where
-    base = morphBundle @_ @fromExports @toMoreExports bundle
-
-instance MorphBundle SomeBundle fromExports '[] where
-  {-# INLINE morphBundle #-}
-  morphBundle (SomeBundle (_ :: Bundle name owner exports)) = SomeBundle $ Bundle @name @owner
-
-instance
-  ( forall name owner. MorphBundle (Bundle name owner) fromExports toMoreExports
-  , forall name owner. GetExport exportName export (Bundle name owner fromExports)
-  ) =>
-  MorphBundle SomeBundle fromExports (exportName ':-> export ': toMoreExports)
-  where
-  {-# INLINE morphBundle #-}
-  morphBundle (SomeBundle bundle) =
-    case morphBundle @_ @fromExports @toMoreExports bundle of
-      base ->
-        case getExport @exportName @export bundle of
-          Just export -> SomeBundle $ base & Exporting @exportName export
-          Nothing -> SomeBundle $ base & Skipping @exportName
-
-{-# INLINE morph #-}
-morph ::
-  forall toExports fromExports bundleC.
-  (MorphBundle bundleC fromExports toExports) =>
-  bundleC fromExports ->
-  bundleC toExports
-morph = morphBundle @_ @fromExports @toExports
-
-someBundle ::
-  forall exports name owner bundleExports.
-  ( KnownSymbol name
-  , KnownSymbol owner
-  , MorphBundle (Bundle name owner) bundleExports exports
-  ) =>
-  Bundle name owner bundleExports ->
-  SomeBundle exports
-someBundle = SomeBundle . morph
+typedToDynamic ::
+  ValidOutputs types =>
+  Bundle meta types ->
+  DynamicBundle meta
+typedToDynamic (Bundle meta exports) = DynamicBundle meta (RepMap.toRepMap exports)

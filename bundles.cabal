@@ -49,13 +49,19 @@ common common-options
 library
   import:              common-options
   hs-source-dirs:      src
-  build-depends:       text
+  build-depends:
   exposed-modules:     Bundling
+                       Bundling.Assemble
                        Bundling.Bundle
+                       Bundling.Constraints.All
                        Bundling.Factory
-                       Bundling.BundlingSetup
+                       Bundling.RepMap
+                       Bundling.Setup
+                       Bundling.TypeMap
+                       Bundling.TypeSet
                        HList
                        Scratch
+                       Examples
 
 test-suite bundles-test
   import:              common-options
