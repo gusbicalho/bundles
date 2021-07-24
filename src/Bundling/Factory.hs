@@ -9,10 +9,13 @@
 {-# LANGUAGE StandaloneKindSignatures #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Bundling.Factory (
   Factory,
+  Factories,
   FactorySpec (..),
   ValidFactory,
   FactoryName,
@@ -32,7 +35,7 @@ import Bundling.Bundle (
 import Bundling.Bundle qualified as Bundle
 import Bundling.TypeSet (TypeSet)
 import Bundling.TypeSet qualified as TS
-import Data.Kind (Type)
+import Data.Kind (Constraint, Type)
 import Data.Maybe qualified as Maybe
 import GHC.TypeLits (KnownSymbol, Symbol)
 
@@ -69,6 +72,23 @@ data Factory (spec :: FactorySpec) where
       [Bundle (FactoryBundleMeta spec) (FactoryOutputs spec)]
     ) ->
     Factory spec
+
+type GoFactories :: [FactorySpec] -> [Type]
+type family GoFactories specs = factories | factories -> specs where
+  GoFactories '[] = '[]
+  GoFactories (spec ': moreSpecs) = Factory spec ': GoFactories moreSpecs
+
+type FactoriesHaveSameMeta :: Type -> [FactorySpec] -> Constraint
+type family FactoriesHaveSameMeta bundleMeta specs where
+  FactoriesHaveSameMeta meta '[] = ()
+  FactoriesHaveSameMeta meta (spec ': specs) =
+    ( meta ~ FactoryBundleMeta spec
+    , FactoriesHaveSameMeta meta specs
+    )
+
+type Factories :: Type -> [FactorySpec] -> (Constraint, [Type])
+type family Factories bundleMeta specs where
+  Factories bundleMeta specs = '(FactoriesHaveSameMeta bundleMeta specs, GoFactories specs)
 
 standalone ::
   forall name types bundleMeta spec.

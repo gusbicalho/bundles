@@ -1,9 +1,15 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Bundling.Setup (
   Setup (..),
@@ -16,7 +22,10 @@ import qualified Bundling.Assemble as Assemble
 import Bundling.Bundle (DynamicBundle)
 import Bundling.Factory (Factory, FactorySpec (..))
 import qualified Bundling.Factory as Factory
-import Data.Kind (Type)
+import qualified Bundling.TypeSet as TS
+import Data.Kind (Constraint, Type)
+import Data.Proxy (Proxy (Proxy))
+import HList (HList)
 
 type Setup :: Type -> [FactorySpec] -> Type
 data Setup bundleMeta factorySpecs where
@@ -42,3 +51,14 @@ runSetup :: [DynamicBundle bundleMeta] -> Setup bundleMeta specs -> [DynamicBund
 runSetup bundles setup = case setup of
   Empty -> bundles
   factory :>> more -> runSetup (Factory.addFromFactory factory bundles) more
+
+-- ToSetup takes an HList of Factories and builds a setups
+
+class ToSetup specs where
+  toSetup :: HList (Factory.Factories specs) -> Setup
+  -- TODO
+
+type If :: forall k. Bool -> k -> k -> k
+type family If c t e where
+  If 'True t _ = t
+  If 'False _ e = e

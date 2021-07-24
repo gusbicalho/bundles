@@ -21,6 +21,7 @@ module Bundling.TypeSet (
   Elem,
   UnionRightDiffIsIdentity,
   UnionLeftDiffIsIdentity,
+  HasNoIntersectionWith (..),
 ) where
 
 import Data.Kind (Constraint, Type)
@@ -83,3 +84,16 @@ type family Elem t set where
   Elem t ( 'TS '[]) = 'False
   Elem t ( 'TS (t ': _)) = 'True
   Elem t ( 'TS (u ': more)) = Elem t ( 'TS more)
+
+type HasNoIntersectionWith :: TypeSet -> TypeSet -> Bool
+type family setA `HasNoIntersectionWith` setB where
+  'TS '[] `HasNoIntersectionWith` setB = 'True
+  'TS (t ': ts) `HasNoIntersectionWith` setB =
+    If (t `Elem` setB)
+      'False
+      ('TS ts `HasNoIntersectionWith` setB)
+
+type If :: forall k. Bool -> k -> k -> k
+type family If c t e where
+  If 'True t _ = t
+  If 'False _ e = e
