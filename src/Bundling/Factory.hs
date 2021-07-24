@@ -17,11 +17,14 @@ module Bundling.Factory (
   Factory,
   Factories,
   FactorySpec (..),
+  FactoriesHaveSameMeta,
   ValidFactory,
+  ValidFactories,
   FactoryName,
   FactoryBundleMeta,
   FactoryInputs,
   FactoryOutputs,
+  AllFactoryOutputs,
   runFactory,
   addFromFactory,
   standalone,
@@ -73,10 +76,10 @@ data Factory (spec :: FactorySpec) where
     ) ->
     Factory spec
 
-type GoFactories :: [FactorySpec] -> [Type]
-type family GoFactories specs = factories | factories -> specs where
-  GoFactories '[] = '[]
-  GoFactories (spec ': moreSpecs) = Factory spec ': GoFactories moreSpecs
+type Factories :: [FactorySpec] -> [Type]
+type family Factories specs = factories | factories -> specs where
+  Factories '[] = '[]
+  Factories (spec ': moreSpecs) = Factory spec ': Factories moreSpecs
 
 type FactoriesHaveSameMeta :: Type -> [FactorySpec] -> Constraint
 type family FactoriesHaveSameMeta bundleMeta specs where
@@ -86,9 +89,18 @@ type family FactoriesHaveSameMeta bundleMeta specs where
     , FactoriesHaveSameMeta meta specs
     )
 
-type Factories :: Type -> [FactorySpec] -> (Constraint, [Type])
-type family Factories bundleMeta specs where
-  Factories bundleMeta specs = '(FactoriesHaveSameMeta bundleMeta specs, GoFactories specs)
+type ValidFactories :: [FactorySpec] -> Constraint
+type family ValidFactories specs where
+  ValidFactories '[] = ()
+  ValidFactories (spec ': specs) =
+    ( ValidFactory spec
+    , ValidFactories specs
+    )
+
+type AllFactoryOutputs :: [FactorySpec] -> TypeSet
+type family AllFactoryOutputs specs where
+  AllFactoryOutputs '[] = TS.Empty
+  AllFactoryOutputs (f ': fs) = TS.Union (FactoryOutputs f) (AllFactoryOutputs fs)
 
 standalone ::
   forall name types bundleMeta spec.

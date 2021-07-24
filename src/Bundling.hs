@@ -24,6 +24,7 @@ import Bundling.Bundle (
   ValidOutputs,
   dynamicToTyped,
   typedToDynamic,
+  bundleExports,
  )
 import Bundling.Factory (
   Factory,
@@ -35,6 +36,7 @@ import Bundling.Factory (
   standalone,
  )
 import Bundling.Setup (
+  BuildSetup (..),
   Setup (..),
   assembleSetup,
   runSetup,
