@@ -14,7 +14,7 @@ import Bundling.TypeSet qualified as TS
 import Data.Foldable qualified as Foldable
 import Data.Function ((&))
 import Data.Maybe qualified as Maybe
-import Data.Monoid (Sum (Sum, getSum))
+import Data.Monoid (Sum (Sum))
 import HList (HList (HNil, (:::)))
 import Numeric.Natural (Natural)
 

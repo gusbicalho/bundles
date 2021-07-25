@@ -53,14 +53,12 @@ library
   exposed-modules:     Bundling
                        Bundling.Assemble
                        Bundling.Bundle
-                       Bundling.Constraints.All
                        Bundling.Factory
                        Bundling.RepMap
                        Bundling.Setup
-                       Bundling.TypeMap
+                       Bundling.Setup.PopNextReadyFactory
                        Bundling.TypeSet
                        HList
-                       Scratch
                        Examples
 
 test-suite bundles-test
