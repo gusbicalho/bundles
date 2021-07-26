@@ -8,14 +8,13 @@ on:
 
 jobs:
   cabal:
-    name: ${{ matrix.os }} / ghc ${{ matrix.ghc }}
+    name: ${{ matrix.os }} / cabal ${{ matrix.cabal }} / ghc ${{ matrix.ghc }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, macOS-latest, windows-latest]
         cabal: ["3.2", "3.4"]
-        ghc:
-          - "8.10.5"
+        ghc: ["8.10.5"]
 
     steps:
     - uses: actions/checkout@v2.3.4
