@@ -21,6 +21,7 @@ module Bundling.Assemble (
   foldMapper,
   collector,
   folder,
+  assemblerPure,
 ) where
 
 import Bundling.Bundle (
@@ -36,7 +37,7 @@ import Data.Typeable (Typeable)
 import GHC.TypeLits (ErrorMessage (ShowType, Text, (:$$:)), TypeError)
 import HList (HList (HNil, (:::)))
 
-newtype Assembler bundleMeta t = Assembler {runAssembler :: [DynamicBundle bundleMeta] -> t}
+newtype Assembler bundleMeta t = Assembler {runAssembler :: [DynamicBundle bundleMeta] -> IO t}
   deriving stock (Functor)
 
 type AssemblerBundleMeta :: Type -> Type
@@ -52,15 +53,23 @@ assembler ::
   forall inputs output meta.
   ( ValidInputs inputs
   ) =>
-  ([Bundle meta inputs] -> output) ->
+  ([Bundle meta inputs] -> IO output) ->
   Assembler meta output
 {-# INLINE assembler #-}
 assembler doAssemble = Assembler (doAssemble . Maybe.mapMaybe (dynamicToTyped @inputs))
 
+assemblerPure ::
+  forall inputs output meta.
+  ( ValidInputs inputs
+  ) =>
+  ([Bundle meta inputs] -> output) ->
+  Assembler meta output
+assemblerPure doAssemble = assembler (pure . doAssemble)
+
 type Assemble :: Type -> Type -> Constraint
 class Assemble assemblers bundleMeta where
   type AssembleResults assemblers :: Type
-  assemble :: assemblers -> [DynamicBundle bundleMeta] -> AssembleResults assemblers
+  assemble :: assemblers -> [DynamicBundle bundleMeta] -> IO (AssembleResults assemblers)
 
 -- Useful assemblers
 
@@ -70,7 +79,7 @@ foldMapper ::
   (u -> output) ->
   Assembler meta output
 {-# INLINE foldMapper #-}
-foldMapper f = assembler $ Foldable.foldMap $ \(Bundle _ (e ::: HNil)) -> maybe mempty f e
+foldMapper f = assemblerPure $ Foldable.foldMap $ \(Bundle _ (e ::: HNil)) -> maybe mempty f e
 
 folder :: forall t. (Typeable t, Monoid t) => Assembler String t
 {-# INLINE folder #-}
@@ -84,7 +93,7 @@ collector = foldMapper pure
 instance Assemble (HList '[]) bundleMeta where
   type AssembleResults (HList '[]) = HList '[]
   {-# INLINE assemble #-}
-  assemble _ _ = HNil
+  assemble _ _ = pure HNil
 
 type TypesOfHList :: Type -> [Type]
 type family TypesOfHList hlist where
@@ -105,4 +114,4 @@ instance
       HList (assemblerResult ': TypesOfHList (AssembleResults (HList moreAssemblers)))
   {-# INLINE assemble #-}
   assemble (asm ::: moreAsms) bundles =
-    runAssembler asm bundles ::: assemble moreAsms bundles
+    (:::) <$> runAssembler asm bundles <*> assemble moreAsms bundles

@@ -9,6 +9,7 @@ import Bundling.Assemble (
   Assembler,
   assemble,
   assembler,
+  assemblerPure,
   collector,
   foldMapper,
   folder,
@@ -32,6 +33,7 @@ import Bundling.Factory (
   ValidFactory,
   addFromFactory,
   factory,
+  factoryPure,
   runFactory,
   standalone,
  )

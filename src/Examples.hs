@@ -12,7 +12,6 @@ import Bundling (Bundle (Bundle))
 import Bundling qualified as B
 import Bundling.TypeSet qualified as TS
 import Data.Foldable qualified as Foldable
-import Data.Function ((&))
 import Data.Maybe qualified as Maybe
 import Data.Monoid (Sum (..))
 import HList (HList (HNil, (:::)))
@@ -47,7 +46,7 @@ fooFactory ::
         (TS.FromList '[Word, Char, Bla])
         (TS.FromList '[[Foo]])
     )
-fooFactory = B.factory (pure . build . Foldable.foldl' collect empty)
+fooFactory = B.factoryPure (pure . build . Foldable.foldl' collect empty)
  where
   empty = ([], [], mempty :: Bla)
   collect (ws, cs, bla) (B.Bundle _ (w ::: c ::: b ::: HNil)) =
@@ -63,28 +62,29 @@ fooFactory = B.factory (pure . build . Foldable.foldl' collect empty)
           ::: HNil
       )
 
-manuallyAssembled :: HList '[[Bla], Bla, [Foo]]
+manuallyAssembled :: IO (HList '[[Bla], Bla, [Foo]])
 manuallyAssembled =
-  []
-    & B.addFromFactory (blaFactory 42)
-    & B.addFromFactory (blaFactory 17)
-    & B.addFromFactory fooFactory
-    & B.assemble (B.collector @Bla ::: B.folder @Bla ::: B.folder @[Foo] ::: HNil)
+  pure []
+    >>= B.addFromFactory (blaFactory 42)
+    >>= B.addFromFactory (blaFactory 17)
+    >>= B.addFromFactory fooFactory
+    >>= B.assemble (B.collector @Bla ::: B.folder @Bla ::: B.folder @[Foo] ::: HNil)
 
 -- >>> manuallyAssembled
 -- [Bla 42,Bla 17] ::: (Bla 59 ::: ([FooN 0,FooS "",FooB (Bla 59)] ::: HNil))
 
-assembledSetup :: HList '[[Bla], Bla, [Foo]]
-assembledSetup =
+assembledSetup :: IO (HList '[[Bla], Bla, [Foo]])
+assembledSetup = do
+  bundles <-
+    B.runSetup [] (blaFactory 42 B.:>> blaFactory 17 B.:>> fooFactory B.:>> B.Empty)
   B.assemble
     (B.collector @Bla ::: B.folder @Bla ::: B.folder @[Foo] ::: HNil)
-    . B.runSetup []
-    $ blaFactory 42 B.:>> blaFactory 17 B.:>> fooFactory B.:>> B.Empty
+    bundles
 
 -- >>> assembledSetup
 -- [Bla 42,Bla 17] ::: (Bla 59 ::: ([FooN 0,FooS "",FooB (Bla 59)] ::: HNil))
 
-autoSetup :: HList '[[Bla], Bla, [Foo]]
+autoSetup :: IO (HList '[[Bla], Bla, [Foo]])
 autoSetup = B.assembleSetup assemblers factories
  where
   assemblers = B.collector @Bla ::: B.folder @Bla ::: B.folder @[Foo] ::: HNil

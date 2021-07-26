@@ -29,6 +29,7 @@ module Bundling.Factory (
   addFromFactory,
   standalone,
   factory,
+  factoryPure,
 ) where
 
 import Bundling.Bundle (
@@ -72,7 +73,7 @@ data Factory (spec :: FactorySpec) where
     ( ValidFactory spec
     ) =>
     ( [Bundle (FactoryBundleMeta spec) (FactoryInputs spec)] ->
-      [Bundle (FactoryBundleMeta spec) (FactoryOutputs spec)]
+      IO [Bundle (FactoryBundleMeta spec) (FactoryOutputs spec)]
     ) ->
     Factory spec
 
@@ -110,33 +111,44 @@ standalone ::
   Bundle bundleMeta types ->
   Factory spec
 {-# INLINE standalone #-}
-standalone bundle = Factory $ const [bundle]
+standalone = Factory . pure @((->) _) . pure @IO . pure @[]
+-- ^ a bundle, wrapped on a list, wrapped on IO, wrapped on a const fn, wrapped on a Factory
 
 factory ::
   forall name inputs outputs bundleMeta spec.
   ( spec ~ 'FactorySpec name bundleMeta inputs outputs
   , ValidFactory spec
   ) =>
-  ([Bundle bundleMeta inputs] -> [Bundle bundleMeta outputs]) ->
+  ([Bundle bundleMeta inputs] -> IO [Bundle bundleMeta outputs]) ->
   Factory spec
 {-# INLINE factory #-}
 factory = Factory
+
+factoryPure ::
+  forall name inputs outputs bundleMeta spec.
+  ( spec ~ 'FactorySpec name bundleMeta inputs outputs
+  , ValidFactory spec
+  ) =>
+  ([Bundle bundleMeta inputs] -> [Bundle bundleMeta outputs]) ->
+  Factory spec
+{-# INLINE factoryPure #-}
+factoryPure = factory . fmap pure
 
 runFactory ::
   forall spec.
   (ValidFactory spec) =>
   Factory spec ->
   [DynamicBundle (FactoryBundleMeta spec)] ->
-  [DynamicBundle (FactoryBundleMeta spec)]
+  IO [DynamicBundle (FactoryBundleMeta spec)]
 {-# INLINE runFactory #-}
 runFactory (Factory makeBundles) bundles =
-  Bundle.typedToDynamic <$> makeBundles (Maybe.mapMaybe Bundle.dynamicToTyped bundles)
+  (Bundle.typedToDynamic <$>) <$> makeBundles (Maybe.mapMaybe Bundle.dynamicToTyped bundles)
 
 addFromFactory ::
   forall spec.
   (ValidFactory spec) =>
   Factory spec ->
   [DynamicBundle (FactoryBundleMeta spec)] ->
-  [DynamicBundle (FactoryBundleMeta spec)]
+  IO [DynamicBundle (FactoryBundleMeta spec)]
 {-# INLINE addFromFactory #-}
-addFromFactory fac bundles = bundles <> runFactory fac bundles
+addFromFactory fac bundles = (bundles <>) <$> runFactory fac bundles

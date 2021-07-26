@@ -14,6 +14,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
 
 module Bundling.Setup (
   Setup (..),
@@ -29,6 +30,7 @@ import Bundling.Bundle (DynamicBundle)
 import Bundling.Factory (Factories, Factory, FactorySpec (..))
 import Bundling.Factory qualified as Factory
 import Bundling.Setup.PopNextReadyFactory (NextReadyFactoryPopped, PopNextReadyFactory, popNextReadyFactory)
+import Data.Functor ((<&>))
 import Data.Kind (Constraint, Type)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import HList (HList (HNil))
@@ -54,23 +56,29 @@ assembleSetup ::
   ) =>
   assemblers ->
   HList (Factories specs) ->
-  Assemble.AssembleResults assemblers
+  IO (Assemble.AssembleResults assemblers)
 {-# INLINE assembleSetup #-}
-assembleSetup assemblers = Assemble.assemble assemblers . runSetup [] . buildSetup @bundleMeta
+assembleSetup assemblers factories =
+  pure factories
+    <&> buildSetup @bundleMeta
+    >>= runSetup []
+    >>= Assemble.assemble assemblers
 
 -- RunSetup could have been a recursive function over the Setup GADT
 -- but by using a class we can structurally recurse over the `specs` type-list
 -- and get inlining!
 class RunSetup specs where
-  runSetup :: [DynamicBundle bundleMeta] -> Setup bundleMeta specs -> [DynamicBundle bundleMeta]
+  runSetup :: [DynamicBundle bundleMeta] -> Setup bundleMeta specs -> IO [DynamicBundle bundleMeta]
 
 instance RunSetup '[] where
   {-# INLINE runSetup #-}
-  runSetup bundles Empty = bundles
+  runSetup bundles Empty = pure bundles
 
 instance (RunSetup moreSpecs) => RunSetup (spec ': moreSpecs) where
   {-# INLINE runSetup #-}
-  runSetup bundles (factory :>> more) = runSetup (Factory.addFromFactory factory bundles) more
+  runSetup bundles (factory :>> more) = do
+    bundles <- Factory.addFromFactory factory bundles
+    runSetup bundles more
 
 -- BuildSetup takes an HList of Factories and builds a setup
 -- I am not proud of this implementation
