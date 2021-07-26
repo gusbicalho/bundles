@@ -1,7 +1,6 @@
 module Main (main) where
 
-import Bundles (projectName)
-
+import Bundling ()
 
 main :: IO ()
-main = putStrLn ("Tests for " ++ projectName)
+main = pure ()
