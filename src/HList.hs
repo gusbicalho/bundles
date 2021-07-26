@@ -54,9 +54,11 @@ class (+++) xs ys where
   (+++) :: HList xs -> HList ys -> HList (xs ++ ys)
 
 instance '[] +++ ys where
+  {-# INLINE (+++) #-}
   HNil +++ ys = ys
 
 instance (xs +++ ys) => (x ': xs) +++ ys where
+  {-# INLINE (+++) #-}
   (x ::: xs) +++ ys = x ::: (xs +++ ys)
 
 -- Reverse
@@ -64,6 +66,7 @@ instance (xs +++ ys) => (x ': xs) +++ ys where
 type HReverse = GoReverse '[]
 type Reverse xs = GoReversed '[] xs
 hReverse :: HReverse xs => HList xs -> HList (Reverse xs)
+{-# INLINE hReverse #-}
 hReverse = goReverse HNil
 
 type GoReversed :: forall k. [k] -> [k] -> [k]
@@ -76,7 +79,9 @@ class GoReverse acc xs where
   goReverse :: HList acc -> HList xs -> HList (GoReversed acc xs)
 
 instance GoReverse acc '[] where
+  {-# INLINE goReverse #-}
   goReverse acc _ = acc
 
 instance (GoReverse (x : acc) xs) => GoReverse acc (x ': xs) where
+  {-# INLINE goReverse #-}
   goReverse acc (x ::: xs) = goReverse (x ::: acc) xs

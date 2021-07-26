@@ -57,6 +57,7 @@ popNextReadyFactory ::
   PopNextReadyFactory futureOutputs spec moreSpecs =>
   HList (Factories (spec ': moreSpecs)) ->
   NonEmptyFactories (NextReadyFactoryPopped futureOutputs spec moreSpecs)
+{-# INLINE popNextReadyFactory #-}
 popNextReadyFactory (spec ::: moreSpecs) =
   goPopNextReadyFactory
     @(Factory.FactoryInputs spec `TS.HasNoIntersectionWith` futureOutputs)
@@ -118,6 +119,7 @@ instance
       spec
       moreSpecs =
       (spec ':| Reverse previousSpecs ++ moreSpecs)
+  {-# INLINE goPopNextReadyFactory #-}
   goPopNextReadyFactory previous (factory ::: more) =
     (factory, HList.hReverse previous +++ more)
 
@@ -145,6 +147,7 @@ instance
             ( 'Text "Cannot make progress due to cycle between factories")
             (Reverse (spec : previousSpecs))
         )
+  {-# INLINE goPopNextReadyFactory #-}
   goPopNextReadyFactory _ _ =
     error "Circular dependencies"
 
@@ -182,6 +185,7 @@ instance
         (spec : previousSpecs)
         nextSpec
         moreSpecs
+  {-# INLINE goPopNextReadyFactory #-}
   goPopNextReadyFactory previous (factory ::: more) =
     goPopNextReadyFactory
       @(Factory.FactoryInputs nextSpec `TS.HasNoIntersectionWith` futureOutputs)
@@ -194,9 +198,3 @@ type family ListAllFactoryNamesForError prefix specs where
   ListAllFactoryNamesForError prefix '[] = prefix
   ListAllFactoryNamesForError prefix (spec ': specs) =
     ListAllFactoryNamesForError (prefix ':$$: 'Text (Factory.FactoryName spec)) specs
-
--- Utils
-
-type NonEmptyToList :: NonEmpty k -> [k]
-type family NonEmptyToList nonEmpty where
-  NonEmptyToList (t ':| ts) = t : ts

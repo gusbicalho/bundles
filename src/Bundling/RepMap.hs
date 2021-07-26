@@ -49,6 +49,7 @@ insert v (MkRepMap repMap) = MkRepMap (go repMap)
     | otherwise = entry : go more
 
 size :: RepMap -> Int
+{-# INLINE size #-}
 size (MkRepMap repMap) = Foldable.length repMap
 
 class ToRepMap t where
@@ -58,15 +59,19 @@ class FromRepMap t where
   fromRepMap :: RepMap -> t
 
 instance ToRepMap (HList '[]) where
+  {-# INLINE toRepMap #-}
   toRepMap HNil = empty
 
 instance (t ~ Maybe u, Typeable u, ToRepMap (HList ts)) => ToRepMap (HList (t ': ts)) where
+  {-# INLINE toRepMap #-}
   toRepMap (a ::: more) = case a of
     Nothing -> toRepMap more
     Just a' -> insert a' (toRepMap more)
 
 instance FromRepMap (HList '[]) where
+  {-# INLINE fromRepMap #-}
   fromRepMap _ = HNil
 
 instance (t ~ Maybe u, Typeable u, FromRepMap (HList ts)) => FromRepMap (HList (t ': ts)) where
+  {-# INLINE fromRepMap #-}
   fromRepMap repMap = lookup @u repMap ::: fromRepMap @(HList ts) repMap

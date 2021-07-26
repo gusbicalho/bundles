@@ -54,6 +54,7 @@ assembler ::
   ) =>
   ([Bundle meta inputs] -> output) ->
   Assembler meta output
+{-# INLINE assembler #-}
 assembler doAssemble = Assembler (doAssemble . Maybe.mapMaybe (dynamicToTyped @inputs))
 
 type Assemble :: Type -> Type -> Constraint
@@ -68,17 +69,21 @@ foldMapper ::
   (Typeable u, Monoid output) =>
   (u -> output) ->
   Assembler meta output
+{-# INLINE foldMapper #-}
 foldMapper f = assembler $ Foldable.foldMap $ \(Bundle _ (e ::: HNil)) -> maybe mempty f e
 
 folder :: forall t. (Typeable t, Monoid t) => Assembler String t
+{-# INLINE folder #-}
 folder = foldMapper id
 
 collector :: forall t. Typeable t => Assembler String [t]
+{-# INLINE collector #-}
 collector = foldMapper pure
 
 -- Assemble HList
 instance Assemble (HList '[]) bundleMeta where
   type AssembleResults (HList '[]) = HList '[]
+  {-# INLINE assemble #-}
   assemble _ _ = HNil
 
 type TypesOfHList :: Type -> [Type]
@@ -98,5 +103,6 @@ instance
   type
     AssembleResults (HList (Assembler assemblerBundleMeta assemblerResult ': moreAssemblers)) =
       HList (assemblerResult ': TypesOfHList (AssembleResults (HList moreAssemblers)))
+  {-# INLINE assemble #-}
   assemble (asm ::: moreAsms) bundles =
     runAssembler asm bundles ::: assemble moreAsms bundles

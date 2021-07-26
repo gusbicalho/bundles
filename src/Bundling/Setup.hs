@@ -50,16 +50,27 @@ assembleSetup ::
   forall bundleMeta specs assemblers.
   ( Assemble assemblers bundleMeta
   , BuildSetup bundleMeta specs
+  , RunSetup (BuildSetupResult specs)
   ) =>
   assemblers ->
   HList (Factories specs) ->
   Assemble.AssembleResults assemblers
+{-# INLINE assembleSetup #-}
 assembleSetup assemblers = Assemble.assemble assemblers . runSetup [] . buildSetup @bundleMeta
 
-runSetup :: [DynamicBundle bundleMeta] -> Setup bundleMeta specs -> [DynamicBundle bundleMeta]
-runSetup bundles setup = case setup of
-  Empty -> bundles
-  factory :>> more -> runSetup (Factory.addFromFactory factory bundles) more
+-- RunSetup could have been a recursive function over the Setup GADT
+-- but by using a class we can structurally recurse over the `specs` type-list
+-- and get inlining!
+class RunSetup specs where
+  runSetup :: [DynamicBundle bundleMeta] -> Setup bundleMeta specs -> [DynamicBundle bundleMeta]
+
+instance RunSetup '[] where
+  {-# INLINE runSetup #-}
+  runSetup bundles Empty = bundles
+
+instance (RunSetup moreSpecs) => RunSetup (spec ': moreSpecs) where
+  {-# INLINE runSetup #-}
+  runSetup bundles (factory :>> more) = runSetup (Factory.addFromFactory factory bundles) more
 
 -- BuildSetup takes an HList of Factories and builds a setup
 -- I am not proud of this implementation
@@ -78,6 +89,7 @@ class
 
 instance BuildSetup bundleMeta '[] where
   type BuildSetupResult '[] = '[]
+  {-# INLINE buildSetup #-}
   buildSetup HNil = Empty
 
 instance
@@ -106,6 +118,7 @@ instance
             spec_
             moreSpecs_
         )
+  {-# INLINE buildSetup #-}
   buildSetup factories =
     case popNextReadyFactory
       @(Factory.AllFactoryOutputs (spec_ : moreSpecs_))

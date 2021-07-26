@@ -8,13 +8,13 @@
 
 module Examples where
 
+import Bundling (Bundle (Bundle))
 import Bundling qualified as B
-import Bundling.Bundle (Bundle (Bundle))
 import Bundling.TypeSet qualified as TS
 import Data.Foldable qualified as Foldable
 import Data.Function ((&))
 import Data.Maybe qualified as Maybe
-import Data.Monoid (Sum (Sum))
+import Data.Monoid (Sum (..))
 import HList (HList (HNil, (:::)))
 import Numeric.Natural (Natural)
 
@@ -125,4 +125,4 @@ brokenSetup = B.buildSetup (blaFactory 42 ::: fromNatToInt ::: fooFactory ::: fr
               & getSum
               & \s -> Bundle "fromIntToNat.bundle" (s ::: HNil)
           ]
--}
+-- -}

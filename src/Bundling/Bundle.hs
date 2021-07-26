@@ -55,9 +55,11 @@ class TestAllEntriesAreEmpty types where
   allEntriesAreEmpty :: HList (Maybes types) -> Bool
 
 instance TestAllEntriesAreEmpty '[] where
+  {-# INLINE allEntriesAreEmpty #-}
   allEntriesAreEmpty HNil = True
 
 instance TestAllEntriesAreEmpty types => TestAllEntriesAreEmpty (t ': types) where
+  {-# INLINE allEntriesAreEmpty #-}
   allEntriesAreEmpty (a ::: more) = case a of
     Just _ -> False
     Nothing -> allEntriesAreEmpty more
@@ -84,6 +86,7 @@ dynamicToTyped ::
   ValidInputs types =>
   DynamicBundle meta ->
   Maybe (Bundle meta types)
+{-# INLINE dynamicToTyped #-}
 dynamicToTyped (DynamicBundle bundleMeta repMap) =
   case RepMap.fromRepMap repMap of
     typedExports
@@ -91,10 +94,12 @@ dynamicToTyped (DynamicBundle bundleMeta repMap) =
       | otherwise -> Just (Bundle bundleMeta typedExports)
 
 bundleExports :: Bundle meta types -> HList (Maybes (TS.Elements types))
+{-# INLINE bundleExports #-}
 bundleExports (Bundle _ exports) = exports
 
 typedToDynamic ::
   ValidOutputs types =>
   Bundle meta types ->
   DynamicBundle meta
+{-# INLINE typedToDynamic #-}
 typedToDynamic (Bundle meta exports) = DynamicBundle meta (RepMap.toRepMap exports)

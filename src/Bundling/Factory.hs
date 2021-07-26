@@ -109,6 +109,7 @@ standalone ::
   ) =>
   Bundle bundleMeta types ->
   Factory spec
+{-# INLINE standalone #-}
 standalone bundle = Factory $ const [bundle]
 
 factory ::
@@ -118,6 +119,7 @@ factory ::
   ) =>
   ([Bundle bundleMeta inputs] -> [Bundle bundleMeta outputs]) ->
   Factory spec
+{-# INLINE factory #-}
 factory = Factory
 
 runFactory ::
@@ -126,6 +128,7 @@ runFactory ::
   Factory spec ->
   [DynamicBundle (FactoryBundleMeta spec)] ->
   [DynamicBundle (FactoryBundleMeta spec)]
+{-# INLINE runFactory #-}
 runFactory (Factory makeBundles) bundles =
   Bundle.typedToDynamic <$> makeBundles (Maybe.mapMaybe Bundle.dynamicToTyped bundles)
 
@@ -135,4 +138,5 @@ addFromFactory ::
   Factory spec ->
   [DynamicBundle (FactoryBundleMeta spec)] ->
   [DynamicBundle (FactoryBundleMeta spec)]
+{-# INLINE addFromFactory #-}
 addFromFactory fac bundles = bundles <> runFactory fac bundles

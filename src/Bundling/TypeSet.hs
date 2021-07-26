@@ -21,7 +21,7 @@ module Bundling.TypeSet (
   Elem,
   UnionRightDiffIsIdentity,
   UnionLeftDiffIsIdentity,
-  HasNoIntersectionWith (..),
+  HasNoIntersectionWith,
 ) where
 
 import Data.Kind (Constraint, Type)
