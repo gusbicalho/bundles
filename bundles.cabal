@@ -59,7 +59,6 @@ library
                        Bundling.Setup.PopNextReadyFactory
                        Bundling.TypeSet
                        HList
-                       Examples
 
 test-suite bundles-test
   import:              common-options

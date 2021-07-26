@@ -87,3 +87,39 @@ fooFactory = B.factoryPure (pure . build . Foldable.foldl' collect empty)
           ]
           ::: HNil
       )
+
+{-
+-- This example is broken due to cycle, which reports this error:
+-- • Cannot make progress due to cycle between factories
+--   fromNatToInt
+--   fromIntToNat
+-- • When checking the inferred type ...
+brokenSetup = B.buildSetup (blaFactory 42 ::: fromNatToInt ::: fooFactory ::: fromIntToNat ::: HNil)
+ where
+  fromNatToInt =
+    B.factory
+      @"fromNatToInt"
+      @(TS.FromList '[Natural])
+      @(TS.FromList '[Integer])
+      $ \bs ->
+        pure
+          [ (\s -> Bundle "fromNatToInt.bundle" (s ::: HNil))
+              . getSum
+              . Foldable.foldMap (\(nat ::: HNil) -> Sum (fromIntegral nat))
+              . fmap B.bundleExports
+              $ bs
+          ]
+  fromIntToNat =
+    B.factory
+      @"fromIntToNat"
+      @(TS.FromList '[Integer])
+      @(TS.FromList '[Natural])
+      $ \bs ->
+        pure
+          [ (\s -> Bundle "fromIntToNat.bundle" (s ::: HNil))
+              . getSum
+              . Foldable.foldMap (\(nat ::: HNil) -> Sum (fromIntegral nat))
+              . fmap B.bundleExports
+              $ bs
+          ]
+-- -}
