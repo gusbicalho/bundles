@@ -98,6 +98,15 @@ autoSetup = B.assembleSetup assemblers factories
 -- >>> autoSetup @IO
 -- [Bla 42,Bla 17] ::: (Bla 59 ::: ([FooN 0,FooS "",FooB (Bla 59)] ::: HNil))
 
+autoSetupPure :: HList '[[Bla], Bla, [Foo]]
+autoSetupPure = B.assemblePureSetup assemblers factories
+ where
+  assemblers = B.collector @Bla ::: B.folder @Bla ::: B.folder @[Foo] ::: HNil
+  factories = blaFactory 42 ::: blaFactory 17 ::: fooFactory ::: HNil
+
+-- >>> autoSetupPure
+-- [Bla 42,Bla 17] ::: (Bla 59 ::: ([FooN 0,FooS "",FooB (Bla 59)] ::: HNil))
+
 -- >>> import Data.Functor.Identity (Identity)
 -- >>> autoSetup @Identity
 -- Identity ([Bla 42,Bla 17] ::: (Bla 59 ::: ([FooN 0,FooS "",FooB (Bla 59)] ::: HNil)))

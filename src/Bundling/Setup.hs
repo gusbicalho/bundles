@@ -22,6 +22,7 @@ module Bundling.Setup (
   runSetup,
   BuildSetup,
   buildSetup,
+  assemblePureSetup,
 ) where
 
 import Bundling.Assemble (Assemble)
@@ -30,7 +31,9 @@ import Bundling.Bundle (DynamicBundle)
 import Bundling.Factory (Factories, Factory, FactorySpec (..))
 import Bundling.Factory qualified as Factory
 import Bundling.Setup.PopNextReadyFactory (NextReadyFactoryPopped, PopNextReadyFactory, popNextReadyFactory)
+import Data.Coerce (coerce)
 import Data.Functor ((<&>))
+import Data.Functor.Identity (Identity (Identity))
 import Data.Kind (Constraint, Type)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import HList (HList (HNil))
@@ -64,6 +67,18 @@ assembleSetup assemblers factories =
     <&> buildSetup @bundleMeta
     >>= runSetup []
     >>= Assemble.assemble assemblers
+
+assemblePureSetup ::
+  forall bundleMeta specs assemblers.
+  ( Assemble Identity assemblers bundleMeta
+  , BuildSetup bundleMeta specs Identity
+  , RunSetup (BuildSetupResult specs)
+  ) =>
+  assemblers ->
+  HList (Factories Identity specs) ->
+  Assemble.AssembleResults assemblers
+{-# INLINE assemblePureSetup #-}
+assemblePureSetup = (coerce .) . assembleSetup @bundleMeta @_ @_ @Identity
 
 -- RunSetup could have been a recursive function over the Setup GADT
 -- but by using a class we can structurally recurse over the `specs` type-list

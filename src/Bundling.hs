@@ -8,6 +8,7 @@ module Bundling (
 import Bundling.Assemble (
   Assembler,
   assemble,
+  assemblePure,
   assembler,
   assemblerPure,
   collector,
@@ -41,5 +42,6 @@ import Bundling.Setup (
   BuildSetup (..),
   Setup (..),
   assembleSetup,
+  assemblePureSetup,
   runSetup,
  )

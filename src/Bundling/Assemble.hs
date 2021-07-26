@@ -16,12 +16,13 @@ module Bundling.Assemble (
   Assembler,
   runAssembler,
   assembler,
+  assemblerPure,
   Assemble (assemble),
+  assemblePure,
   AssembleResults,
   foldMapper,
   collector,
   folder,
-  assemblerPure,
 ) where
 
 import Bundling.Bundle (
@@ -30,7 +31,9 @@ import Bundling.Bundle (
   ValidInputs,
   dynamicToTyped,
  )
+import Data.Coerce (coerce)
 import Data.Foldable qualified as Foldable
+import Data.Functor.Identity (Identity (..))
 import Data.Kind (Constraint, Type)
 import Data.Maybe qualified as Maybe
 import Data.Typeable (Typeable)
@@ -66,6 +69,13 @@ assemblerPure ::
   ([Bundle meta inputs] -> output) ->
   Assembler meta f output
 assemblerPure doAssemble = assembler (pure . doAssemble)
+
+assemblePure ::
+  Assemble Identity assemblers bundleMeta =>
+  assemblers ->
+  [DynamicBundle bundleMeta] ->
+  AssembleResults assemblers
+assemblePure assemblers = coerce . assemble @Identity assemblers
 
 type Assemble :: (Type -> Type) -> Type -> Type -> Constraint
 class (Applicative f) => Assemble f assemblers bundleMeta where
