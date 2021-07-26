@@ -35,27 +35,27 @@ import Data.Kind (Constraint, Type)
 import Data.List.NonEmpty (NonEmpty ((:|)))
 import HList (HList (HNil))
 
-type Setup :: Type -> [FactorySpec] -> Type
-data Setup bundleMeta factorySpecs where
-  Empty :: Setup bundleMeta '[]
+type Setup :: Type -> [FactorySpec] -> (Type -> Type) -> Type
+data Setup bundleMeta factorySpecs m where
+  Empty :: Setup bundleMeta '[] m
   (:>>) ::
     ( Factory.ValidFactory spec
     , Factory.FactoryBundleMeta spec ~ bundleMeta
     ) =>
-    Factory spec ->
-    Setup bundleMeta specs ->
-    Setup bundleMeta (spec ': specs)
+    Factory m spec ->
+    Setup bundleMeta specs m ->
+    Setup bundleMeta (spec ': specs) m
 
 infixr 5 :>>
 
 assembleSetup ::
   forall bundleMeta specs assemblers.
   ( Assemble assemblers bundleMeta
-  , BuildSetup bundleMeta specs
+  , BuildSetup bundleMeta specs IO
   , RunSetup (BuildSetupResult specs)
   ) =>
   assemblers ->
-  HList (Factories specs) ->
+  HList (Factories IO specs) ->
   IO (Assemble.AssembleResults assemblers)
 {-# INLINE assembleSetup #-}
 assembleSetup assemblers factories =
@@ -68,7 +68,7 @@ assembleSetup assemblers factories =
 -- but by using a class we can structurally recurse over the `specs` type-list
 -- and get inlining!
 class RunSetup specs where
-  runSetup :: [DynamicBundle bundleMeta] -> Setup bundleMeta specs -> IO [DynamicBundle bundleMeta]
+  runSetup :: Monad m => [DynamicBundle bundleMeta] -> Setup bundleMeta specs m -> m [DynamicBundle bundleMeta]
 
 instance RunSetup '[] where
   {-# INLINE runSetup #-}
@@ -83,19 +83,19 @@ instance (RunSetup moreSpecs) => RunSetup (spec ': moreSpecs) where
 -- BuildSetup takes an HList of Factories and builds a setup
 -- I am not proud of this implementation
 
-type BuildSetup :: Type -> [FactorySpec] -> Constraint
+type BuildSetup :: Type -> [FactorySpec] -> (Type -> Type) -> Constraint
 class
   ( Factory.ValidFactories specs
   , Factory.FactoriesHaveSameMeta bundleMeta specs
   ) =>
-  BuildSetup bundleMeta specs
+  BuildSetup bundleMeta specs m
   where
   type BuildSetupResult specs :: [FactorySpec]
   buildSetup ::
-    HList (Factories specs) ->
-    Setup bundleMeta (BuildSetupResult specs)
+    HList (Factories m specs) ->
+    Setup bundleMeta (BuildSetupResult specs) m
 
-instance BuildSetup bundleMeta '[] where
+instance BuildSetup bundleMeta '[] m where
   type BuildSetupResult '[] = '[]
   {-# INLINE buildSetup #-}
   buildSetup HNil = Empty
@@ -107,6 +107,7 @@ instance
       (Factory.AllFactoryOutputs (spec_ : moreSpecs_))
       spec_
       moreSpecs_
+      m
   , (readySpec ':| nextSpecs)
       ~ NextReadyFactoryPopped
           (Factory.AllFactoryOutputs (spec_ : moreSpecs_))
@@ -114,9 +115,9 @@ instance
           moreSpecs_
   , Factory.ValidFactories (readySpec ': nextSpecs)
   , Factory.FactoriesHaveSameMeta bundleMeta (readySpec ': nextSpecs)
-  , BuildSetup bundleMeta nextSpecs
+  , BuildSetup bundleMeta nextSpecs m
   ) =>
-  BuildSetup bundleMeta (spec_ ': moreSpecs_)
+  BuildSetup bundleMeta (spec_ ': moreSpecs_) m
   where
   type
     BuildSetupResult (spec_ ': moreSpecs_) =

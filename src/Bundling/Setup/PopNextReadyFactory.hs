@@ -7,6 +7,7 @@
 {-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE PolyKinds #-}
+{-# LANGUAGE QuantifiedConstraints #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneKindSignatures #-}
 {-# LANGUAGE TypeApplications #-}
@@ -34,15 +35,14 @@ import GHC.TypeLits (ErrorMessage (Text, (:$$:)), TypeError)
 import HList (HList (HNil, (:::)), Reverse, type (++), type (+++) ((+++)))
 import HList qualified
 
-type PopNextReadyFactory :: TypeSet -> FactorySpec -> [FactorySpec] -> Constraint
+type PopNextReadyFactory :: TypeSet -> FactorySpec -> [FactorySpec] -> (Type -> Type) -> Constraint
 type PopNextReadyFactory futureOutputs spec moreSpecs =
-  ( GoPopNextReadyFactory
-      (Factory.FactoryInputs spec `TS.HasNoIntersectionWith` futureOutputs)
-      futureOutputs
-      '[]
-      spec
-      moreSpecs
-  )
+  GoPopNextReadyFactory
+    (Factory.FactoryInputs spec `TS.HasNoIntersectionWith` futureOutputs)
+    futureOutputs
+    '[]
+    spec
+    moreSpecs
 
 type NextReadyFactoryPopped futureOutputs spec moreSpecs =
   GoNextReadyFactoryPopped
@@ -53,10 +53,10 @@ type NextReadyFactoryPopped futureOutputs spec moreSpecs =
     moreSpecs
 
 popNextReadyFactory ::
-  forall futureOutputs spec moreSpecs.
-  PopNextReadyFactory futureOutputs spec moreSpecs =>
-  HList (Factories (spec ': moreSpecs)) ->
-  NonEmptyFactories (NextReadyFactoryPopped futureOutputs spec moreSpecs)
+  forall futureOutputs spec moreSpecs m.
+  PopNextReadyFactory futureOutputs spec moreSpecs m =>
+  HList (Factories m (spec ': moreSpecs)) ->
+  NonEmptyFactories m (NextReadyFactoryPopped futureOutputs spec moreSpecs)
 {-# INLINE popNextReadyFactory #-}
 popNextReadyFactory (spec ::: moreSpecs) =
   goPopNextReadyFactory
@@ -66,18 +66,15 @@ popNextReadyFactory (spec ::: moreSpecs) =
     (spec ::: moreSpecs)
 
 type GoPopNextReadyFactory ::
-  Bool -> TypeSet -> [FactorySpec] -> FactorySpec -> [FactorySpec] -> Constraint
+  Bool -> TypeSet -> [FactorySpec] -> FactorySpec -> [FactorySpec] -> (Type -> Type) -> Constraint
 class
-  ( Factories (Reverse previousSpecs ++ moreSpecs)
-      ~ (Factories (Reverse previousSpecs) ++ Factories moreSpecs)
-  , Factories (Reverse previousSpecs) ~ Reverse (Factories previousSpecs)
-  ) =>
   GoPopNextReadyFactory
     specDoesNotNeedFutureOutput
     futureOutputs
     previousSpecs
     spec
     moreSpecs
+    m
   where
   type
     GoNextReadyFactoryPopped
@@ -88,21 +85,22 @@ class
       moreSpecs ::
       NonEmpty FactorySpec
   goPopNextReadyFactory ::
-    HList (Factories previousSpecs) ->
-    HList (Factories (spec ': moreSpecs)) ->
+    HList (Factories m previousSpecs) ->
+    HList (Factories m (spec ': moreSpecs)) ->
     NonEmptyFactories
+      m
       (GoNextReadyFactoryPopped specDoesNotNeedFutureOutput futureOutputs previousSpecs spec moreSpecs)
 
-type NonEmptyFactories :: NonEmpty FactorySpec -> Type
-type family NonEmptyFactories nonEmptySpecs where
-  NonEmptyFactories (spec ':| specs) = (Factory spec, HList (Factories specs))
+type NonEmptyFactories :: (Type -> Type) -> NonEmpty FactorySpec -> Type
+type family NonEmptyFactories m nonEmptySpecs where
+  NonEmptyFactories m (spec ':| specs) = (Factory m spec, HList (Factories m specs))
 
 instance
-  ( Factories (Reverse previousSpecs ++ moreSpecs)
-      ~ (Factories (Reverse previousSpecs) ++ Factories moreSpecs)
-  , Factories (Reverse previousSpecs) ~ Reverse (Factories previousSpecs)
-  , Reverse (Factories previousSpecs) +++ Factories moreSpecs
-  , HList.HReverse (Factories previousSpecs)
+  ( Factories m (Reverse previousSpecs ++ moreSpecs)
+      ~ (Factories m (Reverse previousSpecs) ++ Factories m moreSpecs)
+  , Factories m (Reverse previousSpecs) ~ Reverse (Factories m previousSpecs)
+  , Reverse (Factories m previousSpecs) +++ Factories m moreSpecs
+  , HList.HReverse (Factories m previousSpecs)
   ) =>
   GoPopNextReadyFactory
     'True
@@ -110,6 +108,7 @@ instance
     previousSpecs
     spec
     moreSpecs
+    m
   where
   type
     GoNextReadyFactoryPopped
@@ -124,16 +123,13 @@ instance
     (factory, HList.hReverse previous +++ more)
 
 instance
-  ( Factories (Reverse previousSpecs ++ '[])
-      ~ (Factories (Reverse previousSpecs) ++ Factories '[])
-  , Factories (Reverse previousSpecs) ~ Reverse (Factories previousSpecs)
-  ) =>
   GoPopNextReadyFactory
     'False
     futureOutputs
     previousSpecs
     spec
     '[]
+    m
   where
   type
     GoNextReadyFactoryPopped
@@ -152,9 +148,9 @@ instance
     error "Circular dependencies"
 
 instance
-  ( Factories (Reverse previousSpecs ++ (nextSpec : moreSpecs))
-      ~ (Factories (Reverse previousSpecs) ++ Factories (nextSpec : moreSpecs))
-  , Factories (Reverse previousSpecs) ~ Reverse (Factories previousSpecs)
+  ( Factories m (Reverse previousSpecs ++ (nextSpec : moreSpecs))
+      ~ (Factories m (Reverse previousSpecs) ++ Factories m (nextSpec : moreSpecs))
+  , Factories m (Reverse previousSpecs) ~ Reverse (Factories m previousSpecs)
   , GoPopNextReadyFactory
       ( TS.HasNoIntersectionWith
           (Factory.FactoryInputs nextSpec)
@@ -164,6 +160,7 @@ instance
       (spec : previousSpecs)
       nextSpec
       moreSpecs
+      m
   ) =>
   GoPopNextReadyFactory
     'False
@@ -171,6 +168,7 @@ instance
     previousSpecs
     spec
     (nextSpec : moreSpecs)
+    m
   where
   type
     GoNextReadyFactoryPopped

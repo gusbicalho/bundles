@@ -5,6 +5,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-missing-export-lists #-}
+{-# LANGUAGE PartialTypeSignatures #-}
 
 module Examples where
 
@@ -24,6 +25,7 @@ newtype Bla = Bla Natural
 blaFactory ::
   Natural ->
   B.Factory
+    _
     ( 'B.FactorySpec
         "bla"
         [Char]
@@ -40,6 +42,7 @@ data Foo
 
 fooFactory ::
   B.Factory
+    _
     ( 'B.FactorySpec
         "foo"
         String

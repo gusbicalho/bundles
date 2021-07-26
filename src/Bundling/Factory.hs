@@ -68,19 +68,19 @@ type ValidFactory spec =
   , Bundle.ValidOutputs (FactoryOutputs spec)
   )
 
-data Factory (spec :: FactorySpec) where
+data Factory (m :: Type -> Type) (spec :: FactorySpec) where
   Factory ::
     ( ValidFactory spec
     ) =>
     ( [Bundle (FactoryBundleMeta spec) (FactoryInputs spec)] ->
-      IO [Bundle (FactoryBundleMeta spec) (FactoryOutputs spec)]
+      m [Bundle (FactoryBundleMeta spec) (FactoryOutputs spec)]
     ) ->
-    Factory spec
+    Factory m spec
 
-type Factories :: [FactorySpec] -> [Type]
-type family Factories specs = factories | factories -> specs where
-  Factories '[] = '[]
-  Factories (spec ': moreSpecs) = Factory spec ': Factories moreSpecs
+type Factories :: (Type -> Type) -> [FactorySpec] -> [Type]
+type family Factories m specs = factories | factories -> specs where
+  Factories m '[] = '[]
+  Factories m (spec ': moreSpecs) = Factory m spec ': Factories m moreSpecs
 
 type FactoriesHaveSameMeta :: Type -> [FactorySpec] -> Constraint
 type family FactoriesHaveSameMeta bundleMeta specs where
@@ -104,51 +104,53 @@ type family AllFactoryOutputs specs where
   AllFactoryOutputs (f ': fs) = TS.Union (FactoryOutputs f) (AllFactoryOutputs fs)
 
 standalone ::
-  forall name types bundleMeta spec.
+  forall name m types bundleMeta spec.
   ( spec ~ 'FactorySpec name bundleMeta TS.Empty types
   , ValidFactory spec
+  , Applicative m
   ) =>
   Bundle bundleMeta types ->
-  Factory spec
+  Factory m spec
 {-# INLINE standalone #-}
-standalone = Factory . pure @((->) _) . pure @IO . pure @[]
--- ^ a bundle, wrapped on a list, wrapped on IO, wrapped on a const fn, wrapped on a Factory
+standalone = Factory . pure @((->) _) . pure @m . pure @[]
+-- ^ a bundle, wrapped on a list, wrapped on m, wrapped on a const fn, wrapped on a Factory
 
 factory ::
-  forall name inputs outputs bundleMeta spec.
+  forall name inputs outputs bundleMeta spec m.
   ( spec ~ 'FactorySpec name bundleMeta inputs outputs
   , ValidFactory spec
   ) =>
-  ([Bundle bundleMeta inputs] -> IO [Bundle bundleMeta outputs]) ->
-  Factory spec
+  ([Bundle bundleMeta inputs] -> m [Bundle bundleMeta outputs]) ->
+  Factory m spec
 {-# INLINE factory #-}
 factory = Factory
 
 factoryPure ::
-  forall name inputs outputs bundleMeta spec.
+  forall name inputs outputs bundleMeta spec m.
   ( spec ~ 'FactorySpec name bundleMeta inputs outputs
   , ValidFactory spec
+  , Applicative m
   ) =>
   ([Bundle bundleMeta inputs] -> [Bundle bundleMeta outputs]) ->
-  Factory spec
+  Factory m spec
 {-# INLINE factoryPure #-}
 factoryPure = factory . fmap pure
 
 runFactory ::
-  forall spec.
-  (ValidFactory spec) =>
-  Factory spec ->
+  forall m spec.
+  (ValidFactory spec, Functor m) =>
+  Factory m spec ->
   [DynamicBundle (FactoryBundleMeta spec)] ->
-  IO [DynamicBundle (FactoryBundleMeta spec)]
+  m [DynamicBundle (FactoryBundleMeta spec)]
 {-# INLINE runFactory #-}
 runFactory (Factory makeBundles) bundles =
   (Bundle.typedToDynamic <$>) <$> makeBundles (Maybe.mapMaybe Bundle.dynamicToTyped bundles)
 
 addFromFactory ::
-  forall spec.
-  (ValidFactory spec) =>
-  Factory spec ->
+  forall m spec.
+  (ValidFactory spec, Functor m) =>
+  Factory m spec ->
   [DynamicBundle (FactoryBundleMeta spec)] ->
-  IO [DynamicBundle (FactoryBundleMeta spec)]
+  m [DynamicBundle (FactoryBundleMeta spec)]
 {-# INLINE addFromFactory #-}
 addFromFactory fac bundles = (bundles <>) <$> runFactory fac bundles
