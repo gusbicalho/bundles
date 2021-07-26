@@ -37,12 +37,12 @@ import Data.Typeable (Typeable)
 import GHC.TypeLits (ErrorMessage (ShowType, Text, (:$$:)), TypeError)
 import HList (HList (HNil, (:::)))
 
-newtype Assembler bundleMeta t = Assembler {runAssembler :: [DynamicBundle bundleMeta] -> IO t}
+newtype Assembler bundleMeta f t = Assembler {runAssembler :: [DynamicBundle bundleMeta] -> f t}
   deriving stock (Functor)
 
 type AssemblerBundleMeta :: Type -> Type
 type family AssemblerBundleMeta spec where
-  AssemblerBundleMeta (Assembler bundleMeta _) = bundleMeta
+  AssemblerBundleMeta (Assembler bundleMeta _ _) = bundleMeta
   AssemblerBundleMeta t =
     TypeError
       ( 'Text "AssemblerBundleMeta: Expected an Assembler, but found"
@@ -50,47 +50,51 @@ type family AssemblerBundleMeta spec where
       )
 
 assembler ::
-  forall inputs output meta.
+  forall inputs output meta f.
   ( ValidInputs inputs
   ) =>
-  ([Bundle meta inputs] -> IO output) ->
-  Assembler meta output
+  ([Bundle meta inputs] -> f output) ->
+  Assembler meta f output
 {-# INLINE assembler #-}
 assembler doAssemble = Assembler (doAssemble . Maybe.mapMaybe (dynamicToTyped @inputs))
 
 assemblerPure ::
-  forall inputs output meta.
+  forall inputs output meta f.
   ( ValidInputs inputs
+  , Applicative f
   ) =>
   ([Bundle meta inputs] -> output) ->
-  Assembler meta output
+  Assembler meta f output
 assemblerPure doAssemble = assembler (pure . doAssemble)
 
-type Assemble :: Type -> Type -> Constraint
-class Assemble assemblers bundleMeta where
+type Assemble :: (Type -> Type) -> Type -> Type -> Constraint
+class (Applicative f) => Assemble f assemblers bundleMeta where
   type AssembleResults assemblers :: Type
-  assemble :: assemblers -> [DynamicBundle bundleMeta] -> IO (AssembleResults assemblers)
+  assemble :: assemblers -> [DynamicBundle bundleMeta] -> f (AssembleResults assemblers)
 
 -- Useful assemblers
 
 foldMapper ::
-  forall u output meta.
-  (Typeable u, Monoid output) =>
+  forall u output meta f.
+  ( Typeable u
+  , Monoid output
+  , Applicative f
+  ) =>
   (u -> output) ->
-  Assembler meta output
+  Assembler meta f output
 {-# INLINE foldMapper #-}
 foldMapper f = assemblerPure $ Foldable.foldMap $ \(Bundle _ (e ::: HNil)) -> maybe mempty f e
 
-folder :: forall t. (Typeable t, Monoid t) => Assembler String t
+folder :: forall t f. (Typeable t, Monoid t, Applicative f) => Assembler String f t
 {-# INLINE folder #-}
 folder = foldMapper id
 
-collector :: forall t. Typeable t => Assembler String [t]
+collector :: forall t f. (Typeable t, Applicative f) => Assembler String f [t]
 {-# INLINE collector #-}
 collector = foldMapper pure
 
 -- Assemble HList
-instance Assemble (HList '[]) bundleMeta where
+instance (Applicative f) => Assemble f (HList '[]) bundleMeta where
   type AssembleResults (HList '[]) = HList '[]
   {-# INLINE assemble #-}
   assemble _ _ = pure HNil
@@ -103,14 +107,15 @@ type family TypesOfHList hlist where
 
 instance
   ( bundleMeta ~ assemblerBundleMeta
-  , Assemble (HList moreAssemblers) bundleMeta
+  , Assemble f (HList moreAssemblers) bundleMeta
   , AssembleResults (HList moreAssemblers)
       ~ HList (TypesOfHList (AssembleResults (HList moreAssemblers)))
+  , f ~ assembler_f
   ) =>
-  Assemble (HList (Assembler assemblerBundleMeta assemblerResult ': moreAssemblers)) bundleMeta
+  Assemble f (HList (Assembler assemblerBundleMeta assembler_f assemblerResult ': moreAssemblers)) bundleMeta
   where
   type
-    AssembleResults (HList (Assembler assemblerBundleMeta assemblerResult ': moreAssemblers)) =
+    AssembleResults (HList (Assembler assemblerBundleMeta assembler_f assemblerResult ': moreAssemblers)) =
       HList (assemblerResult ': TypesOfHList (AssembleResults (HList moreAssemblers)))
   {-# INLINE assemble #-}
   assemble (asm ::: moreAsms) bundles =

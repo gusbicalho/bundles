@@ -1,11 +1,11 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE ImportQualifiedPost #-}
+{-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# OPTIONS_GHC -Wno-missing-export-lists #-}
-{-# LANGUAGE PartialTypeSignatures #-}
 
 module Examples where
 
@@ -23,9 +23,10 @@ newtype Bla = Bla Natural
   deriving (Semigroup, Monoid) via (Sum Natural)
 
 blaFactory ::
+  Applicative m =>
   Natural ->
   B.Factory
-    _
+    m
     ( 'B.FactorySpec
         "bla"
         [Char]
@@ -41,8 +42,9 @@ data Foo
   deriving stock (Show)
 
 fooFactory ::
+  Applicative m =>
   B.Factory
-    _
+    m
     ( 'B.FactorySpec
         "foo"
         String
@@ -65,7 +67,7 @@ fooFactory = B.factoryPure (pure . build . Foldable.foldl' collect empty)
           ::: HNil
       )
 
-manuallyAssembled :: IO (HList '[[Bla], Bla, [Foo]])
+manuallyAssembled :: Monad m => m (HList '[[Bla], Bla, [Foo]])
 manuallyAssembled =
   pure []
     >>= B.addFromFactory (blaFactory 42)
@@ -73,10 +75,10 @@ manuallyAssembled =
     >>= B.addFromFactory fooFactory
     >>= B.assemble (B.collector @Bla ::: B.folder @Bla ::: B.folder @[Foo] ::: HNil)
 
--- >>> manuallyAssembled
+-- >>> manuallyAssembled @IO
 -- [Bla 42,Bla 17] ::: (Bla 59 ::: ([FooN 0,FooS "",FooB (Bla 59)] ::: HNil))
 
-assembledSetup :: IO (HList '[[Bla], Bla, [Foo]])
+assembledSetup :: Monad m => m (HList '[[Bla], Bla, [Foo]])
 assembledSetup = do
   bundles <-
     B.runSetup [] (blaFactory 42 B.:>> blaFactory 17 B.:>> fooFactory B.:>> B.Empty)
@@ -84,17 +86,21 @@ assembledSetup = do
     (B.collector @Bla ::: B.folder @Bla ::: B.folder @[Foo] ::: HNil)
     bundles
 
--- >>> assembledSetup
+-- >>> assembledSetup @IO
 -- [Bla 42,Bla 17] ::: (Bla 59 ::: ([FooN 0,FooS "",FooB (Bla 59)] ::: HNil))
 
-autoSetup :: IO (HList '[[Bla], Bla, [Foo]])
+autoSetup :: Monad m => m (HList '[[Bla], Bla, [Foo]])
 autoSetup = B.assembleSetup assemblers factories
  where
   assemblers = B.collector @Bla ::: B.folder @Bla ::: B.folder @[Foo] ::: HNil
   factories = blaFactory 42 ::: blaFactory 17 ::: fooFactory ::: HNil
 
--- >>> autoSetup
+-- >>> autoSetup @IO
 -- [Bla 42,Bla 17] ::: (Bla 59 ::: ([FooN 0,FooS "",FooB (Bla 59)] ::: HNil))
+
+-- >>> import Data.Functor.Identity (Identity)
+-- >>> autoSetup @Identity
+-- Identity ([Bla 42,Bla 17] ::: (Bla 59 ::: ([FooN 0,FooS "",FooB (Bla 59)] ::: HNil)))
 
 {-
 -- broken due to cycle
@@ -110,22 +116,24 @@ brokenSetup = B.buildSetup (blaFactory 42 ::: fromNatToInt ::: fooFactory ::: fr
       @(TS.FromList '[Natural])
       @(TS.FromList '[Integer])
       $ \bs ->
-        [ bs
-            & fmap B.bundleExports
-            & Foldable.foldMap (\(nat ::: HNil) -> Sum (fromIntegral nat))
-            & getSum
-            & \s -> Bundle "fromNatToInt.bundle" (s ::: HNil)
-        ]
+        pure
+          [ (\s -> Bundle "fromNatToInt.bundle" (s ::: HNil))
+              . getSum
+              . Foldable.foldMap (\(nat ::: HNil) -> Sum (fromIntegral nat))
+              . fmap B.bundleExports
+              $ bs
+          ]
   fromIntToNat =
     B.factory
       @"fromIntToNat"
       @(TS.FromList '[Integer])
       @(TS.FromList '[Natural])
       $ \bs ->
-          [ bs
-              & fmap B.bundleExports
-              & Foldable.foldMap (\(nat ::: HNil) -> Sum (fromIntegral nat))
-              & getSum
-              & \s -> Bundle "fromIntToNat.bundle" (s ::: HNil)
+        pure
+          [ (\s -> Bundle "fromIntToNat.bundle" (s ::: HNil))
+              . getSum
+              . Foldable.foldMap (\(nat ::: HNil) -> Sum (fromIntegral nat))
+              . fmap B.bundleExports
+              $ bs
           ]
 -- -}

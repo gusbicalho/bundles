@@ -127,9 +127,9 @@ factory = Factory
 
 factoryPure ::
   forall name inputs outputs bundleMeta spec m.
-  ( spec ~ 'FactorySpec name bundleMeta inputs outputs
+  ( Applicative m
+  , spec ~ 'FactorySpec name bundleMeta inputs outputs
   , ValidFactory spec
-  , Applicative m
   ) =>
   ([Bundle bundleMeta inputs] -> [Bundle bundleMeta outputs]) ->
   Factory m spec

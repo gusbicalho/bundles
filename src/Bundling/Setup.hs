@@ -49,14 +49,15 @@ data Setup bundleMeta factorySpecs m where
 infixr 5 :>>
 
 assembleSetup ::
-  forall bundleMeta specs assemblers.
-  ( Assemble assemblers bundleMeta
-  , BuildSetup bundleMeta specs IO
+  forall bundleMeta specs assemblers m.
+  ( Assemble m assemblers bundleMeta
+  , BuildSetup bundleMeta specs m
   , RunSetup (BuildSetupResult specs)
+  , Monad m
   ) =>
   assemblers ->
-  HList (Factories IO specs) ->
-  IO (Assemble.AssembleResults assemblers)
+  HList (Factories m specs) ->
+  m (Assemble.AssembleResults assemblers)
 {-# INLINE assembleSetup #-}
 assembleSetup assemblers factories =
   pure factories
