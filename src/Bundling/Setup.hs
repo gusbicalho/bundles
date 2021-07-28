@@ -28,26 +28,26 @@ module Bundling.Setup (
 import Bundling.Assemble (Assemble)
 import Bundling.Assemble qualified as Assemble
 import Bundling.Bundle (DynamicBundle)
-import Bundling.Factory (Factories, Factory, FactorySpec (..))
+import Bundling.Factory (Factories, FactorySpec (..))
 import Bundling.Factory qualified as Factory
-import Bundling.Setup.PopNextReadyFactory (NextReadyFactoryPopped, PopNextReadyFactory, popNextReadyFactory)
+import Bundling.Setup.PopNextReadyFactory (NextReadyFactoryPoppedSpecs, PopNextReadyFactory, popNextReadyFactory)
+import Control.Applicative (liftA2)
 import Data.Coerce (coerce)
 import Data.Functor ((<&>))
 import Data.Functor.Identity (Identity (Identity))
 import Data.Kind (Constraint, Type)
-import Data.List.NonEmpty (NonEmpty ((:|)))
-import HList (HList (HNil))
+import HList (HList (HNil, (:::)))
 
-type Setup :: Type -> [FactorySpec] -> (Type -> Type) -> Type
+type Setup :: Type -> [[FactorySpec]] -> (Type -> Type) -> Type
 data Setup bundleMeta factorySpecs m where
   Empty :: Setup bundleMeta '[] m
   (:>>) ::
-    ( Factory.ValidFactory spec
-    , Factory.FactoryBundleMeta spec ~ bundleMeta
+    ( Factory.ValidFactories newSpecs
+    , Factory.FactoriesHaveSameMeta bundleMeta newSpecs
     ) =>
-    Factory m spec ->
+    HList (Factories m newSpecs) ->
     Setup bundleMeta specs m ->
-    Setup bundleMeta (spec ': specs) m
+    Setup bundleMeta (newSpecs : specs) m
 
 infixr 5 :>>
 
@@ -55,7 +55,7 @@ assembleSetup ::
   forall bundleMeta specs assemblers m.
   ( Assemble m assemblers bundleMeta
   , BuildSetup bundleMeta specs m
-  , RunSetup (BuildSetupResult specs)
+  , RunSetup bundleMeta m (BuildSetupResult specs)
   , Monad m
   ) =>
   assemblers ->
@@ -72,7 +72,7 @@ assemblePureSetup ::
   forall bundleMeta specs assemblers.
   ( Assemble Identity assemblers bundleMeta
   , BuildSetup bundleMeta specs Identity
-  , RunSetup (BuildSetupResult specs)
+  , RunSetup bundleMeta Identity (BuildSetupResult specs)
   ) =>
   assemblers ->
   HList (Factories Identity specs) ->
@@ -83,18 +83,51 @@ assemblePureSetup = (coerce .) . assembleSetup @bundleMeta @_ @_ @Identity
 -- RunSetup could have been a recursive function over the Setup GADT
 -- but by using a class we can structurally recurse over the `specs` type-list
 -- and get inlining!
-class RunSetup specs where
-  runSetup :: Monad m => [DynamicBundle bundleMeta] -> Setup bundleMeta specs m -> m [DynamicBundle bundleMeta]
+type RunSetup :: Type -> (Type -> Type) -> [[FactorySpec]] -> Constraint
+class (Applicative m) => RunSetup bundleMeta m specs where
+  runSetup :: [DynamicBundle bundleMeta] -> Setup bundleMeta specs m -> m [DynamicBundle bundleMeta]
 
-instance RunSetup '[] where
+instance Monad m => RunSetup bundleMeta m '[] where
   {-# INLINE runSetup #-}
   runSetup bundles Empty = pure bundles
 
-instance (RunSetup moreSpecs) => RunSetup (spec ': moreSpecs) where
+instance
+  ( Monad m
+  , RunFactories bundleMeta m spec
+  , RunSetup bundleMeta m moreSpecs
+  ) =>
+  RunSetup bundleMeta m (spec ': moreSpecs)
+  where
   {-# INLINE runSetup #-}
-  runSetup bundles (factory :>> more) = do
-    bundles <- Factory.addFromFactory factory bundles
-    runSetup bundles more
+  runSetup bundles (factories :>> more) = do
+    newBundles <- runFactories @bundleMeta bundles factories
+    runSetup (bundles ++ newBundles) more
+
+class
+  ( Applicative m
+  , Factory.ValidFactories specs
+  , Factory.FactoriesHaveSameMeta bundleMeta specs
+  ) =>
+  RunFactories bundleMeta m specs
+  where
+  runFactories :: [DynamicBundle bundleMeta] -> HList (Factories m specs) -> m [DynamicBundle bundleMeta]
+
+instance Applicative m => RunFactories bundleMeta m '[] where
+  runFactories _ HNil = pure []
+
+instance
+  ( Applicative m
+  , Factory.ValidFactories (spec ': moreSpecs)
+  , Factory.FactoriesHaveSameMeta bundleMeta (spec ': moreSpecs)
+  , RunFactories bundleMeta m moreSpecs
+  ) =>
+  RunFactories bundleMeta m (spec ': moreSpecs)
+  where
+  runFactories bundles (factory ::: more) =
+    liftA2
+      (++)
+      (Factory.runFactory factory bundles)
+      (runFactories bundles more)
 
 -- BuildSetup takes an HList of Factories and builds a setup
 -- I am not proud of this implementation
@@ -106,7 +139,7 @@ class
   ) =>
   BuildSetup bundleMeta specs m
   where
-  type BuildSetupResult specs :: [FactorySpec]
+  type BuildSetupResult specs :: [[FactorySpec]]
   buildSetup ::
     HList (Factories m specs) ->
     Setup bundleMeta (BuildSetupResult specs) m
@@ -124,13 +157,13 @@ instance
       spec_
       moreSpecs_
       m
-  , (readySpec ':| nextSpecs)
-      ~ NextReadyFactoryPopped
+  , '(readySpecs, nextSpecs)
+      ~ NextReadyFactoryPoppedSpecs
           (Factory.AllFactoryOutputs (spec_ : moreSpecs_))
           spec_
           moreSpecs_
-  , Factory.ValidFactories (readySpec ': nextSpecs)
-  , Factory.FactoriesHaveSameMeta bundleMeta (readySpec ': nextSpecs)
+  , Factory.ValidFactories readySpecs
+  , Factory.FactoriesHaveSameMeta bundleMeta readySpecs
   , BuildSetup bundleMeta nextSpecs m
   ) =>
   BuildSetup bundleMeta (spec_ ': moreSpecs_) m
@@ -138,7 +171,7 @@ instance
   type
     BuildSetupResult (spec_ ': moreSpecs_) =
       GoBuildSetupResult
-        ( NextReadyFactoryPopped
+        ( NextReadyFactoryPoppedSpecs
             (Factory.AllFactoryOutputs (spec_ : moreSpecs_))
             spec_
             moreSpecs_
@@ -148,7 +181,9 @@ instance
     case popNextReadyFactory
       @(Factory.AllFactoryOutputs (spec_ : moreSpecs_))
       factories of
-      (nextFactory, moreFactories) -> nextFactory :>> buildSetup moreFactories
+      (readyFactories, moreFactories) -> readyFactories :>> buildSetup moreFactories
 
+type GoBuildSetupResult :: ([FactorySpec], [FactorySpec]) -> [[FactorySpec]]
 type family GoBuildSetupResult specs where
-  GoBuildSetupResult (spec ':| moreSpecs) = spec : BuildSetupResult moreSpecs
+  GoBuildSetupResult '(readySpecs, moreSpecs) =
+   readySpecs ': BuildSetupResult moreSpecs

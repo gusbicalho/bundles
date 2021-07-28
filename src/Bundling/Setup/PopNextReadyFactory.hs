@@ -17,20 +17,18 @@
 
 module Bundling.Setup.PopNextReadyFactory (
   PopNextReadyFactory,
-  NextReadyFactoryPopped,
+  NextReadyFactoryPoppedSpecs,
   popNextReadyFactory,
-  NonEmptyFactories,
 ) where
 
 -- Given an HList of Factories, pops the first one that does not require any of
 -- the futureOutputs as its inputs.
 
-import Bundling.Factory (Factories, Factory, FactorySpec)
+import Bundling.Factory (Factories, FactorySpec)
 import Bundling.Factory qualified as Factory
 import Bundling.TypeSet (TypeSet)
 import Bundling.TypeSet qualified as TS
 import Data.Kind (Constraint, Type)
-import Data.List.NonEmpty (NonEmpty ((:|)))
 import GHC.TypeLits (ErrorMessage (Text, (:$$:)), TypeError)
 import HList (HList (HNil, (:::)), Reverse, type (++), type (+++) ((+++)))
 import HList qualified
@@ -44,8 +42,9 @@ type PopNextReadyFactory futureOutputs spec moreSpecs =
     spec
     moreSpecs
 
-type NextReadyFactoryPopped futureOutputs spec moreSpecs =
-  GoNextReadyFactoryPopped
+type NextReadyFactoryPoppedSpecs :: TypeSet -> FactorySpec -> [FactorySpec] -> ([FactorySpec], [FactorySpec])
+type NextReadyFactoryPoppedSpecs futureOutputs spec moreSpecs =
+  GoNextReadyFactoryPoppedSpecs
     (Factory.FactoryInputs spec `TS.HasNoIntersectionWith` futureOutputs)
     futureOutputs
     '[]
@@ -56,7 +55,7 @@ popNextReadyFactory ::
   forall futureOutputs spec moreSpecs m.
   PopNextReadyFactory futureOutputs spec moreSpecs m =>
   HList (Factories m (spec ': moreSpecs)) ->
-  NonEmptyFactories m (NextReadyFactoryPopped futureOutputs spec moreSpecs)
+  NextReadyFactoriesPopped m (NextReadyFactoryPoppedSpecs futureOutputs spec moreSpecs)
 {-# INLINE popNextReadyFactory #-}
 popNextReadyFactory (spec ::: moreSpecs) =
   goPopNextReadyFactory
@@ -77,23 +76,24 @@ class
     m
   where
   type
-    GoNextReadyFactoryPopped
+    GoNextReadyFactoryPoppedSpecs
       specDoesNotNeedFutureOutput
       futureOutputs
       previousSpecs
       spec
       moreSpecs ::
-      NonEmpty FactorySpec
+      ([FactorySpec], [FactorySpec])
   goPopNextReadyFactory ::
     HList (Factories m previousSpecs) ->
     HList (Factories m (spec ': moreSpecs)) ->
-    NonEmptyFactories
+    NextReadyFactoriesPopped
       m
-      (GoNextReadyFactoryPopped specDoesNotNeedFutureOutput futureOutputs previousSpecs spec moreSpecs)
+      (GoNextReadyFactoryPoppedSpecs specDoesNotNeedFutureOutput futureOutputs previousSpecs spec moreSpecs)
 
-type NonEmptyFactories :: (Type -> Type) -> NonEmpty FactorySpec -> Type
-type family NonEmptyFactories m nonEmptySpecs where
-  NonEmptyFactories m (spec ':| specs) = (Factory m spec, HList (Factories m specs))
+type NextReadyFactoriesPopped :: (Type -> Type) -> ([FactorySpec], [FactorySpec]) -> Type
+type family NextReadyFactoriesPopped m poppedSpecs where
+  NextReadyFactoriesPopped m '(readySpecs, moreSpecs) =
+    (HList (Factories m readySpecs), HList (Factories m moreSpecs))
 
 instance
   ( Factories m (Reverse previousSpecs ++ moreSpecs)
@@ -111,16 +111,16 @@ instance
     m
   where
   type
-    GoNextReadyFactoryPopped
+    GoNextReadyFactoryPoppedSpecs
       'True
       futureOutputs
       previousSpecs
       spec
       moreSpecs =
-      (spec ':| Reverse previousSpecs ++ moreSpecs)
+      '( '[spec], Reverse previousSpecs ++ moreSpecs)
   {-# INLINE goPopNextReadyFactory #-}
   goPopNextReadyFactory previous (factory ::: more) =
-    (factory, HList.hReverse previous +++ more)
+    (factory ::: HNil, HList.hReverse previous +++ more)
 
 instance
   GoPopNextReadyFactory
@@ -132,7 +132,7 @@ instance
     m
   where
   type
-    GoNextReadyFactoryPopped
+    GoNextReadyFactoryPoppedSpecs
       'False
       futureOutputs
       previousSpecs
@@ -171,13 +171,13 @@ instance
     m
   where
   type
-    GoNextReadyFactoryPopped
+    GoNextReadyFactoryPoppedSpecs
       'False
       futureOutputs
       previousSpecs
       spec
       (nextSpec : moreSpecs) =
-      GoNextReadyFactoryPopped
+      GoNextReadyFactoryPoppedSpecs
         (Factory.FactoryInputs nextSpec `TS.HasNoIntersectionWith` futureOutputs)
         futureOutputs
         (spec : previousSpecs)
