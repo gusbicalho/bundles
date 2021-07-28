@@ -103,8 +103,8 @@ brokenSetup = B.buildSetup (blaFactory 42 ::: fromNatToInt ::: fooFactory ::: fr
       @(TS.FromList '[Integer])
       $ \bs ->
         pure
-          [ (\s -> Bundle "fromNatToInt.bundle" (s ::: HNil))
-              . getSum
+          [ (\s -> B.Bundle "fromNatToInt.bundle" (s ::: HNil))
+              . (\(Sum s) -> s)
               . Foldable.foldMap (\(nat ::: HNil) -> Sum (fromIntegral nat))
               . fmap B.bundleExports
               $ bs
@@ -116,8 +116,8 @@ brokenSetup = B.buildSetup (blaFactory 42 ::: fromNatToInt ::: fooFactory ::: fr
       @(TS.FromList '[Natural])
       $ \bs ->
         pure
-          [ (\s -> Bundle "fromIntToNat.bundle" (s ::: HNil))
-              . getSum
+          [ (\s -> B.Bundle "fromIntToNat.bundle" (s ::: HNil))
+              . (\(Sum s) -> s)
               . Foldable.foldMap (\(nat ::: HNil) -> Sum (fromIntegral nat))
               . fmap B.bundleExports
               $ bs
