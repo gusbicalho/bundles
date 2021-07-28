@@ -30,7 +30,7 @@ import Bundling.Assemble qualified as Assemble
 import Bundling.Bundle (DynamicBundle)
 import Bundling.Factory (Factories, FactorySpec (..))
 import Bundling.Factory qualified as Factory
-import Bundling.Setup.PopNextReadyFactory (NextReadyFactoryPoppedSpecs, PopNextReadyFactory, popNextReadyFactory)
+import Bundling.Setup.PopNextReadyFactories (NextReadyFactoriesPoppedSpecs, PopNextReadyFactories, popNextReadyFactories)
 import Control.Applicative (liftA2)
 import Data.Coerce (coerce)
 import Data.Functor ((<&>))
@@ -152,13 +152,13 @@ instance BuildSetup bundleMeta '[] m where
 instance
   ( Factory.ValidFactories (spec_ : moreSpecs_)
   , Factory.FactoriesHaveSameMeta bundleMeta (spec_ ': moreSpecs_)
-  , PopNextReadyFactory
+  , PopNextReadyFactories
       (Factory.AllFactoryOutputs (spec_ : moreSpecs_))
       spec_
       moreSpecs_
       m
   , '(readySpecs, nextSpecs)
-      ~ NextReadyFactoryPoppedSpecs
+      ~ NextReadyFactoriesPoppedSpecs
           (Factory.AllFactoryOutputs (spec_ : moreSpecs_))
           spec_
           moreSpecs_
@@ -171,14 +171,14 @@ instance
   type
     BuildSetupResult (spec_ ': moreSpecs_) =
       GoBuildSetupResult
-        ( NextReadyFactoryPoppedSpecs
+        ( NextReadyFactoriesPoppedSpecs
             (Factory.AllFactoryOutputs (spec_ : moreSpecs_))
             spec_
             moreSpecs_
         )
   {-# INLINE buildSetup #-}
   buildSetup factories =
-    case popNextReadyFactory
+    case popNextReadyFactories
       @(Factory.AllFactoryOutputs (spec_ : moreSpecs_))
       factories of
       (readyFactories, moreFactories) -> readyFactories :>> buildSetup moreFactories
@@ -186,4 +186,4 @@ instance
 type GoBuildSetupResult :: ([FactorySpec], [FactorySpec]) -> [[FactorySpec]]
 type family GoBuildSetupResult specs where
   GoBuildSetupResult '(readySpecs, moreSpecs) =
-   readySpecs ': BuildSetupResult moreSpecs
+    readySpecs ': BuildSetupResult moreSpecs

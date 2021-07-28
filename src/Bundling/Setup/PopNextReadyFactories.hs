@@ -15,10 +15,10 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Bundling.Setup.PopNextReadyFactory (
-  PopNextReadyFactory,
-  NextReadyFactoryPoppedSpecs,
-  popNextReadyFactory,
+module Bundling.Setup.PopNextReadyFactories (
+  PopNextReadyFactories,
+  NextReadyFactoriesPoppedSpecs,
+  popNextReadyFactories,
 ) where
 
 -- Given an HList of Factories, pops the first one that does not require any of
@@ -35,9 +35,9 @@ import GHC.TypeLits (ErrorMessage (Text, (:$$:)), TypeError)
 import HList (HList (HNil, (:::)), Reverse, type (++))
 import HList qualified
 
-type PopNextReadyFactory :: TypeSet -> FactorySpec -> [FactorySpec] -> (Type -> Type) -> Constraint
-type PopNextReadyFactory futureOutputs spec moreSpecs m =
-  ( GoPopNextReadyFactory
+type PopNextReadyFactories :: TypeSet -> FactorySpec -> [FactorySpec] -> (Type -> Type) -> Constraint
+type PopNextReadyFactories futureOutputs spec moreSpecs m =
+  ( GoPopNextReadyFactories
       (Factory.FactoryInputs spec `TS.HasNoIntersectionWith` futureOutputs)
       futureOutputs
       '[]
@@ -45,18 +45,18 @@ type PopNextReadyFactory futureOutputs spec moreSpecs m =
       spec
       moreSpecs
       m
-  , NextReadyFactoryPoppedSpecs futureOutputs spec moreSpecs
-      ~ UncheckedNextReadyFactoryPoppedSpecs futureOutputs spec moreSpecs
+  , NextReadyFactoriesPoppedSpecs futureOutputs spec moreSpecs
+      ~ UncheckedNextReadyFactoriesPoppedSpecs futureOutputs spec moreSpecs
   )
 
-type NextReadyFactoryPoppedSpecs :: TypeSet -> FactorySpec -> [FactorySpec] -> ([FactorySpec], [FactorySpec])
-type NextReadyFactoryPoppedSpecs futureOutputs spec moreSpecs =
+type NextReadyFactoriesPoppedSpecs :: TypeSet -> FactorySpec -> [FactorySpec] -> ([FactorySpec], [FactorySpec])
+type NextReadyFactoriesPoppedSpecs futureOutputs spec moreSpecs =
   CheckMakingProgress
-    (UncheckedNextReadyFactoryPoppedSpecs futureOutputs spec moreSpecs)
+    (UncheckedNextReadyFactoriesPoppedSpecs futureOutputs spec moreSpecs)
 
-type UncheckedNextReadyFactoryPoppedSpecs :: TypeSet -> FactorySpec -> [FactorySpec] -> ([FactorySpec], [FactorySpec])
-type UncheckedNextReadyFactoryPoppedSpecs futureOutputs spec moreSpecs =
-  GoNextReadyFactoryPoppedSpecs
+type UncheckedNextReadyFactoriesPoppedSpecs :: TypeSet -> FactorySpec -> [FactorySpec] -> ([FactorySpec], [FactorySpec])
+type UncheckedNextReadyFactoriesPoppedSpecs futureOutputs spec moreSpecs =
+  GoNextReadyFactoriesPoppedSpecs
     (Factory.FactoryInputs spec `TS.HasNoIntersectionWith` futureOutputs)
     futureOutputs
     '[]
@@ -77,24 +77,24 @@ type family CheckMakingProgress specs where
       )
   CheckMakingProgress specs = specs
 
-popNextReadyFactory ::
+popNextReadyFactories ::
   forall futureOutputs spec moreSpecs m.
-  PopNextReadyFactory futureOutputs spec moreSpecs m =>
+  PopNextReadyFactories futureOutputs spec moreSpecs m =>
   HList (Factories m (spec ': moreSpecs)) ->
-  NextReadyFactoriesPopped m (NextReadyFactoryPoppedSpecs futureOutputs spec moreSpecs)
-{-# INLINE popNextReadyFactory #-}
-popNextReadyFactory (spec ::: moreSpecs) =
-  goPopNextReadyFactory
+  NextReadyFactoriesPopped m (NextReadyFactoriesPoppedSpecs futureOutputs spec moreSpecs)
+{-# INLINE popNextReadyFactories #-}
+popNextReadyFactories (spec ::: moreSpecs) =
+  goPopNextReadyFactories
     @(Factory.FactoryInputs spec `TS.HasNoIntersectionWith` futureOutputs)
     @futureOutputs
     HNil
     HNil
     (spec ::: moreSpecs)
 
-type GoPopNextReadyFactory ::
+type GoPopNextReadyFactories ::
   Bool -> TypeSet -> [FactorySpec] -> [FactorySpec] -> FactorySpec -> [FactorySpec] -> (Type -> Type) -> Constraint
 class
-  GoPopNextReadyFactory
+  GoPopNextReadyFactories
     specDoesNotNeedFutureOutput
     futureOutputs
     readySpecs
@@ -104,7 +104,7 @@ class
     m
   where
   type
-    GoNextReadyFactoryPoppedSpecs
+    GoNextReadyFactoriesPoppedSpecs
       specDoesNotNeedFutureOutput
       futureOutputs
       readySpecs
@@ -112,13 +112,13 @@ class
       spec
       moreSpecs ::
       ([FactorySpec], [FactorySpec])
-  goPopNextReadyFactory ::
+  goPopNextReadyFactories ::
     HList (Factories m readySpecs) ->
     HList (Factories m previousSpecs) ->
     HList (Factories m (spec ': moreSpecs)) ->
     NextReadyFactoriesPopped
       m
-      (GoNextReadyFactoryPoppedSpecs specDoesNotNeedFutureOutput futureOutputs readySpecs previousSpecs spec moreSpecs)
+      (GoNextReadyFactoriesPoppedSpecs specDoesNotNeedFutureOutput futureOutputs readySpecs previousSpecs spec moreSpecs)
 
 type NextReadyFactoriesPopped :: (Type -> Type) -> ([FactorySpec], [FactorySpec]) -> Type
 type family NextReadyFactoriesPopped m poppedSpecs where
@@ -129,7 +129,7 @@ instance
   ( Factories m (Reverse previousSpecs ++ moreSpecs)
       ~ (Factories m (Reverse previousSpecs) ++ Factories m moreSpecs)
   , Factories m (Reverse previousSpecs) ~ Reverse (Factories m previousSpecs)
-  , GoPopNextReadyFactory
+  , GoPopNextReadyFactories
       ( TS.HasNoIntersectionWith
           (Factory.FactoryInputs nextSpec)
           futureOutputs
@@ -141,7 +141,7 @@ instance
       moreSpecs
       m
   ) =>
-  GoPopNextReadyFactory
+  GoPopNextReadyFactories
     'True
     futureOutputs
     readySpecs
@@ -151,14 +151,14 @@ instance
     m
   where
   type
-    GoNextReadyFactoryPoppedSpecs
+    GoNextReadyFactoriesPoppedSpecs
       'True
       futureOutputs
       readySpecs
       previousSpecs
       spec
       (nextSpec : moreSpecs) =
-      GoNextReadyFactoryPoppedSpecs
+      GoNextReadyFactoriesPoppedSpecs
         ( TS.HasNoIntersectionWith
             (Factory.FactoryInputs nextSpec)
             futureOutputs
@@ -169,10 +169,10 @@ instance
         nextSpec
         moreSpecs
 
-  {-# INLINE goPopNextReadyFactory #-}
-  goPopNextReadyFactory ready previous (factory ::: more) =
-    -- goPopNextReadyFactory (factory ::: ready) previous more
-    goPopNextReadyFactory
+  {-# INLINE goPopNextReadyFactories #-}
+  goPopNextReadyFactories ready previous (factory ::: more) =
+    -- goPopNextReadyFactories (factory ::: ready) previous more
+    goPopNextReadyFactories
       @(Factory.FactoryInputs nextSpec `TS.HasNoIntersectionWith` futureOutputs)
       @futureOutputs
       (factory ::: ready)
@@ -187,7 +187,7 @@ instance
       ~ HList.Reverse (Factory m spec : Factories m readySpecs)
   , HList.HReverse (Factory m spec : Factories m readySpecs)
   ) =>
-  GoPopNextReadyFactory
+  GoPopNextReadyFactories
     'True
     futureOutputs
     readySpecs
@@ -197,7 +197,7 @@ instance
     m
   where
   type
-    GoNextReadyFactoryPoppedSpecs
+    GoNextReadyFactoriesPoppedSpecs
       'True
       futureOutputs
       readySpecs
@@ -205,8 +205,8 @@ instance
       spec
       '[] =
       '(HList.Reverse (spec : readySpecs), Reverse previousSpecs)
-  {-# INLINE goPopNextReadyFactory #-}
-  goPopNextReadyFactory ready previous (factory ::: HNil) =
+  {-# INLINE goPopNextReadyFactories #-}
+  goPopNextReadyFactories ready previous (factory ::: HNil) =
     (HList.hReverse (factory ::: ready), HList.hReverse previous)
 
 instance
@@ -218,7 +218,7 @@ instance
       ~ HList.Reverse (Factories m readySpecs)
   , HList.HReverse (Factories m readySpecs)
   ) =>
-  GoPopNextReadyFactory
+  GoPopNextReadyFactories
     'False
     futureOutputs
     readySpecs
@@ -228,7 +228,7 @@ instance
     m
   where
   type
-    GoNextReadyFactoryPoppedSpecs
+    GoNextReadyFactoriesPoppedSpecs
       'False
       futureOutputs
       readySpecs
@@ -236,15 +236,15 @@ instance
       spec
       '[] =
       '(HList.Reverse readySpecs, Reverse (spec : previousSpecs))
-  {-# INLINE goPopNextReadyFactory #-}
-  goPopNextReadyFactory ready previous (factory ::: HNil) =
+  {-# INLINE goPopNextReadyFactories #-}
+  goPopNextReadyFactories ready previous (factory ::: HNil) =
     (HList.hReverse ready, HList.hReverse (factory ::: previous))
 
 instance
   ( Factories m (Reverse previousSpecs ++ (nextSpec : moreSpecs))
       ~ (Factories m (Reverse previousSpecs) ++ Factories m (nextSpec : moreSpecs))
   , Factories m (Reverse previousSpecs) ~ Reverse (Factories m previousSpecs)
-  , GoPopNextReadyFactory
+  , GoPopNextReadyFactories
       ( TS.HasNoIntersectionWith
           (Factory.FactoryInputs nextSpec)
           futureOutputs
@@ -256,7 +256,7 @@ instance
       moreSpecs
       m
   ) =>
-  GoPopNextReadyFactory
+  GoPopNextReadyFactories
     'False
     futureOutputs
     readySpecs
@@ -266,23 +266,23 @@ instance
     m
   where
   type
-    GoNextReadyFactoryPoppedSpecs
+    GoNextReadyFactoriesPoppedSpecs
       'False
       futureOutputs
       readySpecs
       previousSpecs
       spec
       (nextSpec : moreSpecs) =
-      GoNextReadyFactoryPoppedSpecs
+      GoNextReadyFactoriesPoppedSpecs
         (Factory.FactoryInputs nextSpec `TS.HasNoIntersectionWith` futureOutputs)
         futureOutputs
         readySpecs
         (spec : previousSpecs)
         nextSpec
         moreSpecs
-  {-# INLINE goPopNextReadyFactory #-}
-  goPopNextReadyFactory ready previous (factory ::: more) =
-    goPopNextReadyFactory
+  {-# INLINE goPopNextReadyFactories #-}
+  goPopNextReadyFactories ready previous (factory ::: more) =
+    goPopNextReadyFactories
       @(Factory.FactoryInputs nextSpec `TS.HasNoIntersectionWith` futureOutputs)
       @futureOutputs
       ready
