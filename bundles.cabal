@@ -49,7 +49,7 @@ common common-options
 library
   import:              common-options
   hs-source-dirs:      src
-  build-depends:
+  build-depends:       containers
   exposed-modules:     Bundling
                        Bundling.Assemble
                        Bundling.Bundle
@@ -59,6 +59,7 @@ library
                        Bundling.Setup.PopNextReadyFactories
                        Bundling.TypeSet
                        HList
+                       Bundling2.Exports
 
 test-suite bundles-test
   import:              common-options
