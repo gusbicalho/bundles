@@ -60,6 +60,7 @@ library
                        Bundling.TypeSet
                        HList
                        Bundling2.Exports
+                       Bundling2.Some
 
 test-suite bundles-test
   import:              common-options
@@ -67,6 +68,8 @@ test-suite bundles-test
   hs-source-dirs:      test
   main-is:             Main.hs
   build-depends:       bundles, hspec
+  other-modules:       BundlingSpec
+                       Bundling2Spec
   ghc-options:         -threaded
                        -rtsopts
                        -with-rtsopts=-N
