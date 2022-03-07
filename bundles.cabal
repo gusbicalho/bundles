@@ -49,7 +49,7 @@ common common-options
 library
   import:              common-options
   hs-source-dirs:      src
-  build-depends:       containers
+  build-depends:       containers, template-haskell
   exposed-modules:     Bundling
                        Bundling.Assemble
                        Bundling.Bundle
@@ -59,8 +59,9 @@ library
                        Bundling.Setup.PopNextReadyFactories
                        Bundling.TypeSet
                        HList
-                       Bundling2.Exports
                        Bundling2.Some
+                       Bundling2.DynBag
+                       Bundling2.Bundle
 
 test-suite bundles-test
   import:              common-options
